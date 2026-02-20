@@ -112,14 +112,18 @@ class BeatDetector:
                 self._beat_interval = 60.0 / self._current_bpm
 
         # --- Beat phase ---
-        elapsed = now - self._last_beat_time
-        beat_phase = (elapsed % self._beat_interval) / self._beat_interval
-
+        # Freeze phase at 0 when signal is silent (no energy)
         is_beat = False
-        if is_onset and elapsed >= self._beat_cooldown:
-            self._last_beat_time = now
-            is_beat = True
+        if frame.rms < 1e-4:
             beat_phase = 0.0
+        else:
+            elapsed = now - self._last_beat_time
+            beat_phase = (elapsed % self._beat_interval) / self._beat_interval
+
+            if is_onset and elapsed >= self._beat_cooldown:
+                self._last_beat_time = now
+                is_beat = True
+                beat_phase = 0.0
 
         # Update frame
         frame.is_onset = is_onset

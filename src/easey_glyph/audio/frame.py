@@ -51,9 +51,9 @@ class AudioFrame:
     is_beat: bool = False
 
     # Timbre
-    spectral_centroid: float = 0.5
+    spectral_centroid: float = 0.0
     spectral_flux: float = 0.0
     spectral_flatness: float = 0.0
-    spectral_rolloff: float = 0.5
+    spectral_rolloff: float = 0.0
     spectral_bandwidth: float = 0.0
     zero_crossing_rate: float = 0.0

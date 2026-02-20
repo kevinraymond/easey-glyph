@@ -127,10 +127,10 @@ class AudioAnalyzer:
 
         # State: smoothed values
         self._smoothed_bands = np.zeros(7, dtype=np.float64)
-        self._smoothed_centroid = 0.5
+        self._smoothed_centroid = 0.0
         self._smoothed_flux = 0.0
         self._smoothed_flatness = 0.0
-        self._smoothed_rolloff = 0.5
+        self._smoothed_rolloff = 0.0
         self._smoothed_bandwidth = 0.0
         self._smoothed_zcr = 0.0
         self._smoothed_rms = 0.0
@@ -304,10 +304,10 @@ class AudioAnalyzer:
             # Decay toward zero using release tau
             release_alpha = 1.0 - math.exp(-dt / max(self.release_tau, 1e-6))
             self._smoothed_bands *= (1.0 - release_alpha)
-            self._smoothed_centroid += release_alpha * (0.5 - self._smoothed_centroid)
+            self._smoothed_centroid *= (1.0 - release_alpha)
             self._smoothed_flux *= (1.0 - release_alpha)
             self._smoothed_flatness *= (1.0 - release_alpha)
-            self._smoothed_rolloff += release_alpha * (0.5 - self._smoothed_rolloff)
+            self._smoothed_rolloff *= (1.0 - release_alpha)
             self._smoothed_bandwidth *= (1.0 - release_alpha)
             self._smoothed_zcr *= (1.0 - release_alpha)
             self._smoothed_rms *= (1.0 - release_alpha)
@@ -392,7 +392,7 @@ class AudioAnalyzer:
             centroid_hz = float(np.sum(mid_freqs * mid_spectrum) / total_energy)
             centroid_raw = float(np.clip((centroid_hz - 200) / (8000 - 200), 0, 1))
         else:
-            centroid_raw = 0.5
+            centroid_raw = 0.0
 
         # Spectral flux (half-wave rectified, normalized by spectral energy)
         if self._prev_spectrum is not None:
@@ -420,7 +420,7 @@ class AudioAnalyzer:
             rolloff_hz = mid_freqs[min(rolloff_idx, len(mid_freqs) - 1)]
             rolloff_raw = float(np.clip((rolloff_hz - 200) / (12000 - 200), 0, 1))
         else:
-            rolloff_raw = 0.5
+            rolloff_raw = 0.0
 
         # Spectral bandwidth (std dev of frequency around centroid)
         if total_energy > 1e-10:
