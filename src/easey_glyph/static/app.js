@@ -1287,6 +1287,7 @@
       document.querySelectorAll("[data-morph]").forEach(function (b) { b.classList.remove("active"); });
       btn.classList.add("active");
       send({ type: "morph", mode: btn.dataset.morph });
+      markPresetDirty();
     });
   });
 

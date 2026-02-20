@@ -116,7 +116,8 @@ html, body {
   .card-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .card--analysis {
+  .card--analysis,
+  .card--midi {
     grid-column: span 2;
   }
 }
@@ -129,6 +130,9 @@ html, body {
   .card--analysis {
     grid-column: span 3;
   }
+  .card--midi {
+    grid-column: span 2;
+  }
 }
 
 /* Desktop: 4 columns */
@@ -136,7 +140,8 @@ html, body {
   .card-grid {
     grid-template-columns: repeat(4, 1fr);
   }
-  .card--analysis {
+  .card--analysis,
+  .card--midi {
     grid-column: span 2;
   }
 }
@@ -660,6 +665,7 @@ html, body {
 /* Select */
 .select-ctrl {
   flex: 1;
+  min-width: 0;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -1394,6 +1400,12 @@ html, body {
   flex-shrink: 0;
 }
 
+.midi-maps-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
 .midi-map-list {
   margin: 6px 0;
 }
@@ -1415,8 +1427,8 @@ html, body {
 }
 
 .midi-map-item .midi-map-label {
-  width: 100px;
   flex-shrink: 0;
+  white-space: nowrap;
   color: var(--text-dim);
   font-size: 11px;
 }
