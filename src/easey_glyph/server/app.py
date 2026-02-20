@@ -16,6 +16,7 @@ from PIL import Image
 
 from easey_glyph.audio.features import analyze_file
 from easey_glyph.audio.reactive import frame_to_render_params, render_pixel_frame
+from easey_glyph.mapping import resolve_mappings, apply_resolved_to_enh, apply_side_effects, get_param_ranges
 from easey_glyph.render.pipeline import (
     EDGE_KERNELS,
     INTERP_METHODS,
@@ -545,163 +546,34 @@ async def _send_loop(ws: WebSocket, sync_q: asyncio.Queue):
             return
 
 
-def _get_audio_feature(frame, source: str) -> float:
-    """Get a normalized audio feature value (0-1) by name."""
-    if source == "bass": return frame.bass
-    if source == "mid": return frame.mid
-    if source == "treble": return frame.treble
-    if source == "rms": return frame.rms
-    if source == "beat_phase": return frame.beat_phase
-    if source == "onset_strength": return frame.onset_strength
-    if source == "spectral_centroid": return frame.spectral_centroid
-    if source == "spectral_flux": return frame.spectral_flux
-    if source == "spectral_flatness": return frame.spectral_flatness
-    if source == "spectral_rolloff": return frame.spectral_rolloff
-    if source == "spectral_bandwidth": return frame.spectral_bandwidth
-    if source == "zero_crossing_rate": return frame.zero_crossing_rate
-    return 0.0
-
-
-def _apply_curve(t: float, curve: str) -> float:
-    """Apply a curve function to a normalized 0-1 value."""
-    if curve == "ease_in":
-        return t * t
-    elif curve == "ease_out":
-        return 1.0 - (1.0 - t) * (1.0 - t)
-    elif curve == "ease_in_out":
-        return 3 * t * t - 2 * t * t * t  # smoothstep
-    elif curve == "exponential":
-        return t * t * t
-    return t  # linear
-
-
-def _apply_mappings(enh, audio_frame, midi_vals=None):
+def _apply_mappings_main(enh, audio_frame, midi_vals=None):
     """Apply audio mappings to create effective enhancement params.
 
-    Returns (effective_enh, mapped_vals_dict).
-    When a mapping is active, the enh field is overridden by the audio-driven value.
-    When MIDI is also mapped to the same param, audio uses bipolar offset around
-    the MIDI base value (Resolume-style stacking).
+    Delegates to centralized mapping module. Returns (effective_enh, mapped_vals_dict).
     """
-    from dataclasses import replace
-
     if not state.mappings:
         return enh, {}
 
-    result = replace(enh)
-    mapped_vals = {}
-
-    for key, mapping in state.mappings.items():
-        if mapping.source == "none":
-            continue
-        audio_val = _get_audio_feature(audio_frame, mapping.source)
-
-        # Input thresholding: remap [lo_thresh, hi_thresh] → [0, 1]
-        lo_t, hi_t = mapping.lo_thresh, mapping.hi_thresh
-        if hi_t > lo_t:
-            audio_val = max(0.0, min(1.0, (audio_val - lo_t) / (hi_t - lo_t)))
-
-        if mapping.invert:
-            audio_val = 1.0 - audio_val
-        audio_val = _apply_curve(audio_val, mapping.curve)
-
-        if midi_vals and key in midi_vals:
-            # Bipolar: audio modulates around MIDI base value
-            base = float(midi_vals[key])
-            depth = mapping.max_val - mapping.min_val
-            offset = (audio_val - 0.5) * depth
-            lo, hi = _PARAM_RANGES.get(key, (mapping.min_val, mapping.max_val))
-            mapped_val = max(lo, min(hi, base + offset))
-        else:
-            # Absolute: unchanged backward-compat behavior
-            mapped_val = mapping.min_val + (mapping.max_val - mapping.min_val) * audio_val
-
-        if key == "cfg_scale":
-            state.grid_pool.update_cfg(cfg_scale=max(0.0, mapped_val))
-            mapped_vals[key] = round(mapped_val, 2)
-        elif key == "superres":
-            state.superres_enabled = bool(mapped_val > 0.5)
-            mapped_vals[key] = state.superres_enabled
-        elif key == "edge_enhance":
-            if mapped_val > 0.5 and state.edge_mode_selected != "off":
-                result.edge_enhance = state.edge_mode_selected
-            else:
-                result.edge_enhance = "off"
-            mapped_vals[key] = result.edge_enhance != "off"
-        elif key in ("posterize", "scanlines"):
-            v = round(mapped_val)
-            setattr(result, key, v if v > 0 else None)
-            mapped_vals[key] = v
-        elif key == "render_scale":
-            v = max(1, round(mapped_val))
-            setattr(result, key, v)
-            mapped_vals[key] = v
-        elif key == "feedback_strength":
-            state.feedback_strength = mapped_val
-            mapped_vals[key] = round(mapped_val, 2)
-        elif key == "persistence":
-            state.persistence = mapped_val
-            mapped_vals[key] = round(mapped_val, 2)
-        else:
-            setattr(result, key, mapped_val)
-            mapped_vals[key] = round(mapped_val, 2)
-
-    return result, mapped_vals
+    resolved = resolve_mappings(state.mappings, audio_frame, midi_vals)
+    effective_enh, mapped_vals = apply_resolved_to_enh(
+        enh, resolved, state.edge_mode_selected)
+    apply_side_effects(resolved, state)
+    return effective_enh, mapped_vals
 
 
 def _apply_mappings_pure(enh, mappings, audio_frame, edge_mode_selected):
-    """Apply audio mappings to create effective enhancement params — pure/side-effect-free.
-
-    Unlike _apply_mappings(), this does NOT write to state.* fields.
-    Side-effect mappings (cfg_scale, feedback_strength, persistence) are ignored
-    since grid generation is shared in A/B mode.
+    """Apply audio mappings — pure/side-effect-free for A/B comparison.
 
     Returns (effective_enh, superres_on).
     """
-    from dataclasses import replace
-
     if not mappings:
         return enh, False
 
-    result = replace(enh)
-    superres_on = False
-
-    for key, mapping in mappings.items():
-        if mapping.source == "none":
-            continue
-        audio_val = _get_audio_feature(audio_frame, mapping.source)
-
-        # Input thresholding: remap [lo_thresh, hi_thresh] -> [0, 1]
-        lo_t, hi_t = mapping.lo_thresh, mapping.hi_thresh
-        if hi_t > lo_t:
-            audio_val = max(0.0, min(1.0, (audio_val - lo_t) / (hi_t - lo_t)))
-
-        if mapping.invert:
-            audio_val = 1.0 - audio_val
-        audio_val = _apply_curve(audio_val, mapping.curve)
-
-        mapped_val = mapping.min_val + (mapping.max_val - mapping.min_val) * audio_val
-
-        # Skip side-effect-only mappings (grid gen is shared)
-        if key in ("cfg_scale", "feedback_strength", "persistence"):
-            continue
-        elif key == "superres":
-            superres_on = bool(mapped_val > 0.5)
-        elif key == "edge_enhance":
-            if mapped_val > 0.5 and edge_mode_selected != "off":
-                result.edge_enhance = edge_mode_selected
-            else:
-                result.edge_enhance = "off"
-        elif key in ("posterize", "scanlines"):
-            v = round(mapped_val)
-            setattr(result, key, v if v > 0 else None)
-        elif key == "render_scale":
-            v = max(1, round(mapped_val))
-            setattr(result, key, v)
-        else:
-            setattr(result, key, mapped_val)
-
-    return result, superres_on
+    resolved = resolve_mappings(mappings, audio_frame)
+    effective_enh, mapped_vals = apply_resolved_to_enh(
+        enh, resolved, edge_mode_selected)
+    superres_on = resolved.get("superres", 0.0) > 0.5
+    return effective_enh, superres_on
 
 
 def _resolve_preset_snapshot(data: dict) -> PresetSnapshot:
@@ -758,29 +630,13 @@ def _resolve_preset_snapshot(data: dict) -> PresetSnapshot:
 # MIDI processing
 # ---------------------------------------------------------------------------
 
-# Param ranges for MIDI learn — uses same ranges as HTML sliders
-_PARAM_RANGES = {
-    "fg_brightness": (0.2, 2.0),
-    "render_scale": (1, 16),
-    "sharpen": (0, 200),
-    "saturation": (0, 3.0),
-    "contrast": (0, 3.0),
-    "gamma": (0.2, 3.0),
-    "posterize": (0, 8),
-    "grain": (0, 20),
-    "scanlines": (0, 8),
-    "superres": (0, 1),
-    "edge_enhance": (0, 1),
-    "edge_intensity": (0.0, 1.0),
-    "opacity": (0.0, 1.0),
-    "alpha_curve": (0.1, 5.0),
-    "feedback_strength": (0.05, 1.0),
-    "persistence": (0.0, 0.95),
+# Param ranges for MIDI learn — derived from mapping registry + MIDI-only extras
+_PARAM_RANGES = get_param_ranges()
+_PARAM_RANGES.update({
     "steps": (1, 50),
-    "cfg_scale": (0, 5.0),
     "onset_threshold": (0.5, 5.0),
     "img2img_strength": (0, 1.0),
-}
+})
 
 
 def _process_midi_messages():
@@ -1288,7 +1144,7 @@ def _render_one_frame(include_preview: bool = True, preview_fraction: float = 1.
     enh, midi_vals = _apply_midi_mappings(state.enh)
 
     # Apply audio mappings → effective enh with overridden values
-    effective_enh, mapped_vals = _apply_mappings(enh, audio_frame, midi_vals)
+    effective_enh, mapped_vals = _apply_mappings_main(enh, audio_frame, midi_vals)
 
     # No built-in auto-reactivity — effects only react to audio
     # when the user explicitly maps them via the UI dropdowns.
@@ -1775,7 +1631,7 @@ def _handle_mapping(msg: dict):
         state.mappings.pop(key, None)
     else:
         curve = str(msg.get("curve", "linear"))
-        if curve not in ("linear", "ease_in", "ease_out", "ease_in_out", "exponential"):
+        if curve not in ("linear", "ease_in", "ease_out", "ease_in_out", "exponential", "logarithmic", "threshold"):
             curve = "linear"
         lo_thresh = max(0.0, min(1.0, float(msg.get("lo_thresh", 0.0))))
         hi_thresh = max(0.0, min(1.0, float(msg.get("hi_thresh", 1.0))))

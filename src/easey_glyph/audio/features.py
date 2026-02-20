@@ -47,6 +47,13 @@ def analyze_file(
         timestamp = start / sr
 
         frame = analyzer.analyze(chunk, timestamp=timestamp)
+        # Pass multi-resolution spectra to beat pipeline
+        if analyzer.last_bass_spectrum is not None:
+            beat_detector.set_spectra(
+                analyzer.last_bass_spectrum,
+                analyzer.last_mid_spectrum,
+                analyzer.last_high_spectrum,
+            )
         frame = beat_detector.process(frame)
         frames.append(frame)
 

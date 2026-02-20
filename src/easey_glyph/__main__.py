@@ -6,6 +6,7 @@ Usage:
 """
 
 import argparse
+import logging
 import webbrowser
 
 import torch
@@ -46,11 +47,18 @@ def main():
                         help="MIDI input port name (default: auto-select first)")
     parser.add_argument("--pool-size", type=int, default=64,
                         help="Grid pool size (default: 64)")
+    parser.add_argument("--debug-beat", action="store_true",
+                        help="Enable debug logging for beat detection")
     parser.add_argument("--coreml-unet", type=str, default=None,
                         help="CoreML FlowUNet .mlpackage path (macOS, replaces PyTorch)")
     parser.add_argument("--coreml-superres", type=str, default=None,
                         help="CoreML SuperRes .mlpackage path (macOS, replaces PyTorch)")
     args = parser.parse_args()
+
+    # Beat debug logging
+    if args.debug_beat:
+        logging.basicConfig(level=logging.WARNING, format="%(message)s")
+        logging.getLogger("easey_glyph.audio.beat").setLevel(logging.DEBUG)
 
     # Device selection
     if args.device == "auto":
