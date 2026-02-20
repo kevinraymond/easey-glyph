@@ -215,7 +215,12 @@ class OnsetDetector:
         threshold = self._compute_threshold()
         is_onset = combined_flux > threshold
 
-        return is_onset, combined_flux, combined_flux
+        # Normalize onset strength to 0-1 (relative to recent max)
+        # Raw combined_flux stays unbounded for autocorrelation (scale-invariant)
+        recent_max = self._long_term_history.max()
+        onset_strength = min(1.0, combined_flux / max(recent_max, 1e-6))
+
+        return is_onset, onset_strength, combined_flux
 
     def _compute_threshold(self) -> float:
         """Compute adaptive threshold using median + k * MAD with ceiling."""
