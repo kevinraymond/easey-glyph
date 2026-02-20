@@ -147,6 +147,7 @@ html, body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
+  min-width: 320px;
 }
 
 .card-header {
@@ -482,7 +483,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
 .audio-mode-row .file-upload-btn {
@@ -567,7 +568,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .ctrl-row label {
@@ -838,7 +839,7 @@ html, body {
 /* ─── Audio Player ─── */
 
 .audio-container {
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
 .audio-filename {
@@ -885,7 +886,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 8px 0;
+  margin: 12px 0;
 }
 
 .meter-row-top {
