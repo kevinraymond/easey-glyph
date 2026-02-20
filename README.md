@@ -103,7 +103,15 @@ uv sync --all-extras
 
 ## Train Your Own
 
-The whole pipeline — preprocessing, training, and super-resolution — runs on a single GPU and trains on as few as 10,000 images. Training takes roughly 4-8 hours on an RTX 3090/4090.
+The whole pipeline — preprocessing, training, and super-resolution — runs on a single GPU and trains on as few as 10,000 images. End-to-end on a 4090:
+
+| Step | Time |
+|------|------|
+| ~10k image dataset generation (2x4090, ComfyUI via API) | ~90 min |
+| Preprocess images to glyph tensors | ~9 min |
+| Flow model training (15,000 kimg) | ~85 min |
+| Preprocess images to super-res glyph tensors | ~9 min |
+| Super-res model training (500 kimg) | ~9 min |
 
 See the [pipeline walkthrough](docs/index.md) for the full step-by-step guide.
 
