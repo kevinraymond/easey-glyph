@@ -101,7 +101,7 @@ class BeatDetector:
 
         if len(self._onset_times) >= 4:
             intervals = np.diff(self._onset_times)
-            valid = intervals[(intervals > 0.3) & (intervals < 1.0)]
+            valid = intervals[(intervals > 0.2) & (intervals < 1.5)]
             if len(valid) >= 2:
                 median_interval = float(np.median(valid))
                 raw_bpm = 60.0 / median_interval
