@@ -222,6 +222,17 @@ html, body {
   padding-bottom: 0;
 }
 
+.card-persist {
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.card-persist .sub-section-label {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 /* Card header actions (e.g. Audio card mode switch) */
 .card-header-actions {
   display: flex;
@@ -1404,6 +1415,7 @@ html, body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 16px;
+  align-items: start;
 }
 
 .midi-map-list {
@@ -1415,15 +1427,20 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-dim);
-  margin: 8px 0 4px;
+  margin: 6px 0 6px;
 }
 
 .midi-map-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
+  padding: 3px 4px;
+  border-radius: 3px;
   font-size: 11px;
+}
+
+.midi-map-item:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .midi-map-item .midi-map-label {
@@ -1431,6 +1448,14 @@ html, body {
   white-space: nowrap;
   color: var(--text-dim);
   font-size: 11px;
+}
+
+#midi-param-list .midi-map-label {
+  width: 11ch;
+}
+
+#midi-trigger-list .midi-map-label {
+  width: 15ch;
 }
 
 .midi-map-item .midi-cc-display {
