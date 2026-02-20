@@ -247,6 +247,9 @@
   var analysisSamples = [];
   var analysisDuration = 60;
   var analysisFrameCount = 0;
+  var analysisAutoStop = false;
+  var analysisAutoStopTimeout = 5;
+  var analysisSilenceStart = null;
 
   var elBadgeAnalysis = document.getElementById("badge-analysis");
   var elAnalysisDurationSlider = document.getElementById("analysis-duration-slider");
@@ -546,11 +549,28 @@
         elLogContainer.scrollTop = elLogContainer.scrollHeight;
       }
 
+      // Silence detection for auto-stop
+      var silenceText = "";
+      if (analysisAutoStop) {
+        var rms = meta.features.rms || 0;
+        if (rms < 0.02) {
+          if (analysisSilenceStart === null) analysisSilenceStart = Date.now();
+          var silenceSecs = (Date.now() - analysisSilenceStart) / 1000;
+          silenceText = " (silence " + Math.floor(silenceSecs) + "s)";
+          if (silenceSecs >= analysisAutoStopTimeout) {
+            analysisFinish();
+            return;
+          }
+        } else {
+          analysisSilenceStart = null;
+        }
+      }
+
       // Update badge
       var elapsed = Math.floor(analysisSamples.length / 60);
-      elBadgeAnalysis.textContent = "Recording " + elapsed + "s";
+      elBadgeAnalysis.textContent = "Recording " + formatDuration(elapsed) + silenceText;
 
-      // Auto-stop
+      // Auto-stop on duration cap
       if (analysisSamples.length >= targetSamples) {
         analysisFinish();
       }
@@ -2866,11 +2886,22 @@
 
   // ─── Feature Analysis ──────────────────────────────────────────
 
+  function formatDuration(secs) {
+    secs = Math.floor(secs);
+    if (secs < 60) return secs + "s";
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    return m + "m " + s + "s";
+  }
+
   function analysisStart() {
     analysisState = "recording";
     analysisSamples = [];
     analysisFrameCount = 0;
     analysisDuration = parseInt(elAnalysisDurationSlider.value) || 60;
+    analysisAutoStop = document.getElementById("analysis-autostop").checked;
+    analysisAutoStopTimeout = parseInt(document.getElementById("analysis-autostop-timeout").value) || 5;
+    analysisSilenceStart = null;
 
     elBtnRecord.disabled = true;
     elBtnStop.disabled = false;
@@ -3027,7 +3058,7 @@
 
   function initAnalysis() {
     elAnalysisDurationSlider.addEventListener("input", function () {
-      elAnalysisDurationVal.textContent = elAnalysisDurationSlider.value + "s";
+      elAnalysisDurationVal.textContent = formatDuration(parseInt(elAnalysisDurationSlider.value));
     });
 
     elBtnRecord.addEventListener("click", function () { analysisStart(); });

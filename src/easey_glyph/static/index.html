@@ -568,9 +568,18 @@
         <div class="card-body">
           <div class="ctrl-row">
             <label data-tip="How long to record feature data. Longer = more reliable statistics, but you need audio playing the whole time.">Duration</label>
-            <input type="range" min="10" max="120" step="5" value="60"
+            <input type="range" min="10" max="900" step="5" value="60"
                    id="analysis-duration-slider" class="slider">
-            <span class="val" id="val-analysis-duration">60s</span>
+            <span class="val" id="val-analysis-duration">1m 0s</span>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Stop recording automatically when audio is silent for this long.">Auto-stop on silence</label>
+            <input type="checkbox" id="analysis-autostop">
+            <select id="analysis-autostop-timeout">
+              <option value="3">3s</option>
+              <option value="5" selected>5s</option>
+              <option value="10">10s</option>
+            </select>
           </div>
           <div class="ctrl-row btn-row">
             <button id="btn-analysis-record" class="segmented-btn" title="Start recording feature data">Record</button>
