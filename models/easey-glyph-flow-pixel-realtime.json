@@ -1,0 +1,29 @@
+{
+  "architecture": "FlowUNet",
+  "model": {
+    "image_size": 32,
+    "in_channels": 16,
+    "out_channels": 16,
+    "base_channels": 96,
+    "channel_mult": [
+      1,
+      2,
+      4,
+      4
+    ],
+    "num_res_blocks": 2,
+    "attention_resolutions": [
+      4,
+      8
+    ],
+    "use_depthwise_separable": false,
+    "audio_dim": 12,
+    "time_emb_dim": 128
+  },
+  "training": {
+    "kimg": 15000.0,
+    "step": 234375
+  },
+  "state_dict_key": "model_ema",
+  "num_params": 34063312
+}

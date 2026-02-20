@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EASEy-GLYPH</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout">
+    <!-- Top bar (simplified — audio controls moved to Audio card) -->
+    <header class="topbar">
+      <h1>EASEy-GLYPH</h1>
+      <div class="topbar-actions">
+        <button id="btn-settings" class="settings-btn" title="Settings">&#9881;</button>
+        <button id="btn-help" class="help-btn" title="Toggle help descriptions (H)">?</button>
+      </div>
+    </header>
+
+    <!-- Card grid -->
+    <main class="card-grid">
+
+      <!-- 1. Preview (sticky, not collapsible) -->
+      <div class="card card--preview" data-card="preview">
+        <div class="canvas-wrap" id="canvas-wrap">
+          <canvas id="canvas" width="512" height="512"></canvas>
+          <div class="ab-labels hidden" id="ab-labels">
+            <span class="ab-label ab-label--a" id="ab-label-a"></span>
+            <span class="ab-label ab-label--b" id="ab-label-b"></span>
+          </div>
+        </div>
+        <div class="loading-overlay" id="loading-overlay">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Generating grids&hellip;</div>
+        </div>
+        <div class="preview-overlay" id="preview-overlay">Click to fullscreen</div>
+        <button class="preview-toggle" id="preview-toggle" title="Expand/collapse preview">&#9660;</button>
+      </div>
+
+      <!-- 2. Performance -->
+      <div class="card card--performance" data-card="performance">
+        <div class="card-header">
+          <h2>Performance</h2>
+          <span class="card-badge" id="badge-performance">Ambient | Pool | 1:1</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div class="ctrl-row btn-row">
+            <button class="segmented-btn" data-morph="frozen" title="Hold current image">Frozen</button>
+            <button class="segmented-btn active" data-morph="ambient" title="Slow 5s cycle">Ambient</button>
+            <button class="segmented-btn" data-morph="beat" title="Change on detected beats">Beat</button>
+          </div>
+          <div class="gen-group">
+            <button class="segmented-btn" data-gen="realtime" title="Generate fresh grid on each beat">Realtime</button>
+            <div class="gen-pool-cluster">
+              <button class="segmented-btn active" data-gen="pool" title="Pre-generate grids in background">Pool</button>
+              <div class="gen-pool-actions" id="pool-actions">
+                <button id="btn-regenerate" class="segmented-btn" title="Flush grid pool and generate all new grids">Regen</button>
+                <button id="btn-reseed" class="segmented-btn" title="Jump to next grid without waiting for a beat">Next</button>
+              </div>
+            </div>
+          </div>
+          <div class="ctrl-row btn-row">
+            <button class="segmented-btn active" data-aspect="1:1" title="Square (1:1)">1:1</button>
+            <button class="segmented-btn" data-aspect="4:3" title="Classic (4:3)">4:3</button>
+            <button class="segmented-btn" data-aspect="16:9" title="Widescreen (16:9)">16:9</button>
+            <button class="segmented-btn" data-aspect="9:16" title="Portrait / Phone (9:16)">9:16</button>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Feedback loop. 0=off (new from noise each beat). Higher=evolve current grid. Subtle drift → strong mutation.">Feedback</label>
+            <input type="range" min="0" max="0.95" step="0.05" value="0"
+                   data-key="feedback_strength" class="slider">
+            <span class="val" id="val-feedback_strength">off</span>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Grid persistence. 0=off (new grids fully replace). Higher=blend old grid into new arrivals. Use with Feedback for evolving textures that gradually incorporate fresh content.">Persist</label>
+            <input type="range" min="0" max="0.95" step="0.05" value="0"
+                   data-key="persistence" class="slider">
+            <span class="val" id="val-persistence">off</span>
+          </div>
+          <!-- Source Input sub-section -->
+          <div class="sub-section-label">Source Input</div>
+          <div class="ctrl-row">
+            <label class="file-upload-btn inactive" id="img2img-upload-label"
+                   data-tip="Upload a source image or video. The model will reimagine it in the trained aesthetic.">
+              <span class="file-upload-text">Load Source</span>
+              <input type="file" id="img2img-input" accept="image/*,video/*" hidden>
+            </label>
+            <button class="source-mode-btn" id="btn-camera"
+                    title="Use webcam as live source input">Camera</button>
+            <button id="img2img-clear" class="img2img-clear-btn hidden"
+                    title="Clear source and return to noise generation">&times;</button>
+          </div>
+          <div id="img2img-preview" class="img2img-preview hidden">
+            <img id="img2img-thumb" alt="Source">
+            <video id="camera-video" autoplay playsinline muted></video>
+          </div>
+          <div id="camera-device-row" class="ctrl-row hidden">
+            <label>Device</label>
+            <select id="camera-device-select" class="select-ctrl" title="Camera device"></select>
+          </div>
+          <div id="camera-stats" class="camera-stats hidden" title="R=Received frames, E=Encoded to glyph grid, G=Generated img2img outputs"></div>
+          <div class="ctrl-row">
+            <label data-tip="How much creative freedom. 0=faithful reproduction, 0.5=reinterpretation, 1.0=ignore source entirely.">Strength</label>
+            <input type="range" min="0" max="1.0" step="0.05" value="0.5"
+                   data-key="img2img_strength" class="slider" id="img2img-strength-slider">
+            <span class="val" id="val-img2img_strength">0.5</span>
+          </div>
+          <p class="help-text">Upload an image, video, or GIF, or use a webcam. The model transforms it into the trained art style. Lower strength = closer to original.</p>
+        </div>
+      </div>
+
+      <!-- 3. Generation -->
+      <div class="card card--generation" data-card="generation">
+        <div class="card-header">
+          <h2>Generation</h2>
+          <span class="card-badge" id="badge-generation">8 Euler</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div class="ctrl-row">
+            <label data-tip="ODE steps for grid generation. More=better quality, fewer=faster. 8 is good for live. Heun/Midpoint use 2 model evaluations per step (so 4 Heun steps costs the same as 8 Euler).">ODE Steps</label>
+            <input type="range" min="1" max="50" step="1" value="8"
+                   data-key="steps" class="slider">
+            <span class="val" id="val-steps">8</span>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="ODE solver. Euler=fastest (1 eval/step). Heun=2nd order trapezoidal (2 evals/step, better quality at same cost). Midpoint=2nd order (2 evals/step).">Solver</label>
+            <select data-key="solver" class="select-ctrl" title="ODE solver method">
+              <option value="euler" selected>Euler</option>
+              <option value="heun">Heun</option>
+              <option value="midpoint">Midpoint</option>
+            </select>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Time step distribution. Uniform=even spacing. Cosine=concentrates at boundaries (free quality boost). Poly=mild concentration.">Schedule</label>
+            <select data-key="time_schedule" class="select-ctrl" title="Time step schedule">
+              <option value="uniform" selected>Uniform</option>
+              <option value="cosine">Cosine</option>
+              <option value="poly">Poly</option>
+            </select>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Classifier-free guidance scale. 0=off (unconditional). Higher=stronger conditioning toward audio embedding. Doubles compute cost per step. Audio-mappable.">CFG Scale</label>
+            <input type="range" min="0" max="5" step="0.1" value="0"
+                   data-key="cfg_scale" class="slider">
+            <span class="val" id="val-cfg_scale">off</span>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Audio source for CFG conditioning. Random=random Gaussian per generation. Live=current audio features (experimental until model retrained).">CFG Audio</label>
+            <select data-key="cfg_audio" class="select-ctrl" title="CFG audio conditioning mode">
+              <option value="random" selected>Random</option>
+              <option value="live">Live Audio</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Presets -->
+      <div class="card card--presets" data-card="presets">
+        <div class="card-header">
+          <h2>Presets</h2>
+          <span class="card-badge" id="badge-presets">Default</span>
+          <button class="preset-reset-btn hidden" id="preset-reset-btn" title="Reset to preset">&#8634;</button>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div id="preset-grid" class="preset-grid"></div>
+          <select id="preset-select" class="preset-select select-ctrl"></select>
+          <div class="sub-section-label">Compare</div>
+          <div class="ctrl-row" id="ab-row">
+            <button id="btn-ab-toggle" class="segmented-btn" title="Side-by-side preset comparison">A/B</button>
+            <select id="ab-select-a" class="select-ctrl ab-select" title="Preset A (left)" disabled></select>
+            <select id="ab-select-b" class="select-ctrl ab-select" title="Preset B (right)" disabled></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Audio -->
+      <div class="card card--audio" data-card="audio">
+        <div class="card-header">
+          <h2>Audio</h2>
+          <span class="card-badge" id="badge-audio">Idle</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div class="audio-mode-row">
+            <button id="btn-idle" class="mode-btn active" data-mode="idle"
+                    title="No audio input — synthetic clock drives effects">Idle</button>
+            <button id="btn-file" class="mode-btn" data-mode="file"
+                    title="Play an audio file — visuals sync to beats">File</button>
+            <button id="btn-live" class="mode-btn" data-mode="live"
+                    title="Capture live audio — real-time reactive">Live</button>
+            <label id="file-upload-label" class="file-upload-btn inactive" title="Upload WAV, FLAC, or MP3 for file playback">
+              Load Audio
+              <input type="file" id="file-input" accept="audio/*" hidden>
+            </label>
+            <button id="audio-clear" class="img2img-clear-btn hidden"
+                    title="Unload audio file and return to idle">&times;</button>
+          </div>
+          <div id="audio-container" class="audio-container hidden">
+            <div id="audio-filename" class="audio-filename"></div>
+            <audio id="audio-player" controls></audio>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Beat detection sensitivity. Lower = more beats detected, higher = only strong beats.">Onset Threshold</label>
+            <input type="range" min="0.5" max="5.0" step="0.1" value="1.4"
+                   data-key="onset_threshold" class="slider">
+            <span class="val" id="val-onset_threshold">1.4</span>
+          </div>
+          <div class="meters">
+            <div class="meter-row-top">
+              <div class="meter-group">
+                <div class="meter-group-label">Frequency</div>
+                <div class="meter-group-bars">
+                  <div class="meter-col">
+                    <div class="meter-bar-v"><div class="meter-fill" id="meter-bass"></div></div>
+                    <span class="meter-val" id="mval-bass"></span>
+                    <span class="meter-label">Bass</span>
+                  </div>
+                  <div class="meter-col">
+                    <div class="meter-bar-v"><div class="meter-fill" id="meter-mid"></div></div>
+                    <span class="meter-val" id="mval-mid"></span>
+                    <span class="meter-label">Mid</span>
+                  </div>
+                  <div class="meter-col">
+                    <div class="meter-bar-v"><div class="meter-fill" id="meter-treble"></div></div>
+                    <span class="meter-val" id="mval-treble"></span>
+                    <span class="meter-label">Treble</span>
+                  </div>
+                </div>
+              </div>
+              <div class="meter-group">
+                <div class="meter-group-label">Dynamics</div>
+                <div class="meter-group-bars">
+                  <div class="meter-col">
+                    <div class="meter-bar-v"><div class="meter-fill" id="meter-rms"></div></div>
+                    <span class="meter-val" id="mval-rms"></span>
+                    <span class="meter-label">Energy</span>
+                  </div>
+                  <div class="meter-col">
+                    <div class="meter-bar-v"><div class="meter-fill" id="meter-onset_strength"></div></div>
+                    <span class="meter-val" id="mval-onset_strength"></span>
+                    <span class="meter-label">Onset</span>
+                  </div>
+                  <div class="meter-col">
+                    <div class="meter-bar-v"><div class="meter-fill" id="meter-beat_phase"></div></div>
+                    <span class="meter-val" id="mval-beat_phase"></span>
+                    <span class="meter-label">Phase</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="meter-group">
+              <div class="meter-group-label">Spectral</div>
+              <div class="meter-group-bars">
+                <div class="meter-col">
+                  <div class="meter-bar-v"><div class="meter-fill" id="meter-spectral_centroid"></div></div>
+                  <span class="meter-val" id="mval-spectral_centroid"></span>
+                  <span class="meter-label">Bright</span>
+                </div>
+                <div class="meter-col">
+                  <div class="meter-bar-v"><div class="meter-fill" id="meter-spectral_flux"></div></div>
+                  <span class="meter-val" id="mval-spectral_flux"></span>
+                  <span class="meter-label">Flux</span>
+                </div>
+                <div class="meter-col">
+                  <div class="meter-bar-v"><div class="meter-fill" id="meter-spectral_flatness"></div></div>
+                  <span class="meter-val" id="mval-spectral_flatness"></span>
+                  <span class="meter-label">Flat</span>
+                </div>
+                <div class="meter-col">
+                  <div class="meter-bar-v"><div class="meter-fill" id="meter-spectral_rolloff"></div></div>
+                  <span class="meter-val" id="mval-spectral_rolloff"></span>
+                  <span class="meter-label">Roll</span>
+                </div>
+                <div class="meter-col">
+                  <div class="meter-bar-v"><div class="meter-fill" id="meter-spectral_bandwidth"></div></div>
+                  <span class="meter-val" id="mval-spectral_bandwidth"></span>
+                  <span class="meter-label">Band</span>
+                </div>
+                <div class="meter-col">
+                  <div class="meter-bar-v"><div class="meter-fill" id="meter-zero_crossing_rate"></div></div>
+                  <span class="meter-val" id="mval-zero_crossing_rate"></span>
+                  <span class="meter-label">ZCR</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="beat-info">
+            <span id="bpm-display">-- BPM</span>
+            <span class="beat-dot" id="beat-dot"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Effects (spans 2 cols on desktop) -->
+      <div class="card card--effects" data-card="effects">
+        <div class="card-header">
+          <h2>Effects</h2>
+          <span class="card-badge" id="badge-effects">4x Bilinear</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <!-- Core -->
+          <div class="effect-group">
+            <span class="effect-group-label">Core</span>
+            <div class="ctrl-row">
+              <label data-tip="Foreground brightness multiplier. 1.0=normal. Map to Bass for classic audio-reactive glow.">Brightness</label>
+              <input type="range" min="0.2" max="2.0" step="0.05" value="1.0"
+                     data-key="fg_brightness" class="slider">
+              <span class="val" id="val-fg_brightness">1.0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Master opacity. 1.0 = fully opaque, 0 = fully transparent. Audio-mappable for pulsing transparency on beats.">Opacity</label>
+              <input type="range" class="slider" data-key="opacity" min="0" max="1" step="0.01" value="1">
+              <span class="val" id="val-opacity">1.00</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Alpha power curve. 1.0=unchanged. Below 1=more opaque (soft edges solidify). Above 1=more transparent (only bright areas stay visible).">Alpha Curve</label>
+              <input type="range" min="0.1" max="5.0" step="0.1" value="1.0"
+                     data-key="alpha_curve" class="slider">
+              <span class="val" id="val-alpha_curve">1.0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Upscale factor from 32x32. 2=chunky pixels, 4=balanced, 8+=painterly smooth.">Scale</label>
+              <input type="range" min="1" max="16" step="1" value="4"
+                     data-key="render_scale" class="slider">
+              <span class="val" id="val-render_scale">4</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Interpolation for first upscale step. Bilinear=smooth, Nearest=pixel-perfect.">Interp</label>
+              <select data-key="interp" class="select-ctrl"
+                      title="Interpolation for first upscale step">
+                <option value="bilinear" selected>Bilinear</option>
+                <option value="bicubic">Bicubic</option>
+                <option value="lanczos">Lanczos</option>
+                <option value="nearest">Nearest</option>
+              </select>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Scale2x pixel-art upscaler (32 to 64). Preserves hard pixel edges before standard upscale.">Scale2x</label>
+              <input type="checkbox" data-key="pixel_upscale" class="toggle-ctrl"
+                     title="Scale2x pixel-art upscaler">
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Neural network upscaler. Reconstructs detail from 32x32 glyph rendering. 32 to 256. Requires --superres checkpoint. Map to audio to trigger on beats.">SuperRes</label>
+              <input type="checkbox" data-key="superres" class="toggle-ctrl"
+                     title="Learned CNN upscaler (32 to 256)">
+              <input type="range" class="slider" data-key="superres" min="0" max="1" step="0.01" value="0" style="display:none">
+              <span class="val" id="val-superres" style="display:none"></span>
+            </div>
+          </div>
+          <!-- Tone -->
+          <div class="effect-group">
+            <span class="effect-group-label">Tone</span>
+            <div class="ctrl-row">
+              <label data-tip="Color intensity. 1.0=original, less than 1=desaturated/gray, greater than 1=vivid.">Saturation</label>
+              <input type="range" min="0" max="3.0" step="0.05" value="1.0"
+                     data-key="saturation" class="slider">
+              <span class="val" id="val-saturation">1.0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Tonal contrast. 1.0=original, less than 1=flat/washed, greater than 1=punchy/dramatic.">Contrast</label>
+              <input type="range" min="0" max="3.0" step="0.05" value="1.0"
+                     data-key="contrast" class="slider">
+              <span class="val" id="val-contrast">1.0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Gamma correction. 1.0=unchanged, less than 1=darker midtones, greater than 1=brighter/lifted shadows.">Gamma</label>
+              <input type="range" min="0.2" max="3.0" step="0.05" value="1.0"
+                     data-key="gamma" class="slider">
+              <span class="val" id="val-gamma">1.0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Reduce color depth to N bits. 0=off, 1=extreme 2-color, 4=retro, 8=subtle banding.">Posterize</label>
+              <input type="range" min="0" max="8" step="1" value="0"
+                     data-key="posterize" class="slider">
+              <span class="val" id="val-posterize">off</span>
+            </div>
+          </div>
+          <!-- Texture -->
+          <div class="effect-group">
+            <span class="effect-group-label">Texture</span>
+            <div class="ctrl-row">
+              <label data-tip="UnsharpMask strength (0-200). Enhances edges and fine detail.">Sharpen</label>
+              <input type="range" min="0" max="200" step="1" value="0"
+                     data-key="sharpen" class="slider">
+              <span class="val" id="val-sharpen">0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Edge enhancement filter. Multiple modes: directional lines, emboss relief, outline extraction.">Edge Enhance</label>
+              <select data-key="edge_enhance" class="select-ctrl"
+                      title="Edge enhancement mode">
+                <option value="off" selected>Off</option>
+                <option value="all">All Edges</option>
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+                <option value="diagonal_bwd">Diagonal \</option>
+                <option value="diagonal_fwd">Diagonal /</option>
+                <option value="emboss">Emboss</option>
+                <option value="outline">Outline</option>
+              </select>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Edge intensity blend (0-1). 0=no edge effect, 1=full effect.">Edge Intensity</label>
+              <input type="range" min="0" max="1" step="0.05" value="1.0"
+                     data-key="edge_intensity" class="slider">
+              <span class="val" id="val-edge_intensity">1.0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="Film grain noise (0-20). Adds organic analog texture to the image.">Grain</label>
+              <input type="range" min="0" max="20" step="0.5" value="0"
+                     data-key="grain" class="slider">
+              <span class="val" id="val-grain">0</span>
+            </div>
+            <div class="ctrl-row">
+              <label data-tip="CRT scanline effect. 0=off, 2=dense dark lines, 8=sparse lines.">Scanlines</label>
+              <input type="range" min="0" max="8" step="1" value="0"
+                     data-key="scanlines" class="slider">
+              <span class="val" id="val-scanlines">off</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. Mappings (spans 2 cols on desktop) -->
+      <div class="card card--mappings" data-card="mappings">
+        <div class="card-header">
+          <h2>Mappings</h2>
+          <span class="card-badge" id="badge-mappings">0 active</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div id="mapping-list" class="mapping-list">
+            <!-- Populated by JS: initMappingsCard() -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Output (collapsed by default) -->
+      <div class="card card--output collapsed" data-card="output">
+        <div class="card-header">
+          <h2>Output</h2>
+          <span class="card-badge" id="badge-output">Idle</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div class="ctrl-row">
+            <label data-tip="Output resolution for recording and video senders (NDI/Syphon/Spout). Independent from preview.">Resolution</label>
+            <select id="output-res-select" class="select-ctrl" title="Output resolution preset">
+              <option value="1920x1080" selected>1920x1080 (FHD)</option>
+              <option value="2560x1440">2560x1440 (QHD)</option>
+              <option value="3840x2160">3840x2160 (4K)</option>
+              <option value="1280x720">1280x720 (720p)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="ctrl-row hidden" id="output-custom-row">
+            <label>Custom</label>
+            <input type="number" id="output-w" class="num-input" min="32" max="7680" value="1920" title="Width">
+            <span class="dim-x">x</span>
+            <input type="number" id="output-h" class="num-input" min="32" max="4320" value="1080" title="Height">
+            <button id="output-custom-apply" class="small-btn">Apply</button>
+          </div>
+          <div class="ctrl-row btn-row">
+            <button class="segmented-btn" data-oaspect="1:1" title="Square">1:1</button>
+            <button class="segmented-btn" data-oaspect="4:3" title="4:3">4:3</button>
+            <button class="segmented-btn active" data-oaspect="16:9" title="Widescreen (16:9)">16:9</button>
+            <button class="segmented-btn" data-oaspect="9:16" title="Portrait (9:16)">9:16</button>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Target frames per second for the render loop. Higher = smoother but more CPU/GPU. Actual FPS may be lower.">Target FPS</label>
+            <input type="range" min="15" max="120" step="1" value="60"
+                   id="output-fps-slider" class="slider">
+            <span class="val" id="val-target_fps">60</span>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Browser preview throttle. Reduce to free GPU/CPU for output. Off = output only, no preview in browser.">Preview</label>
+            <select id="preview-fraction-select" class="select-ctrl" title="Preview frame rate fraction">
+              <option value="1">Full</option>
+              <option value="0.5">1/2</option>
+              <option value="0.25">1/4</option>
+              <option value="0.1">1/10</option>
+              <option value="0">Off</option>
+            </select>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Show real alpha transparency in preview (WebP). Checkerboard background shows through transparent areas. Off = opaque JPEG preview (faster).">Alpha Preview</label>
+            <input type="checkbox" data-key="alpha_preview" class="toggle-ctrl"
+                   title="Show transparency in preview (WebP)">
+          </div>
+          <div class="output-senders">
+            <div class="ctrl-row">
+              <label>NDI</label>
+              <button id="btn-ndi-start" class="small-btn" title="Start NDI video output (requires cyndilib)">Start</button>
+              <button id="btn-ndi-stop" class="small-btn hidden" title="Stop NDI sender">Stop</button>
+              <span class="sender-status" id="ndi-status"></span>
+            </div>
+            <div class="ctrl-row">
+              <label>Syphon</label>
+              <button id="btn-syphon-start" class="small-btn" title="Start Syphon server (macOS only)">Start</button>
+              <button id="btn-syphon-stop" class="small-btn hidden" title="Stop Syphon server">Stop</button>
+              <span class="sender-status" id="syphon-status"></span>
+            </div>
+            <div class="ctrl-row">
+              <label>Spout</label>
+              <button id="btn-spout-start" class="small-btn" title="Start Spout sender (Windows only)">Start</button>
+              <button id="btn-spout-stop" class="small-btn hidden" title="Stop Spout sender">Stop</button>
+              <span class="sender-status" id="spout-status"></span>
+            </div>
+          </div>
+          <div class="ctrl-row">
+            <label data-tip="Record frames as PNG sequence. Use ffmpeg to encode: ffmpeg -framerate 60 -i frame_%06d.png -c:v libx264 output.mp4">Record</label>
+            <input type="text" id="record-dir" class="text-input" value="output/recording" placeholder="Output directory" title="Directory for PNG frames">
+            <button id="btn-record-start" class="small-btn" title="Start recording PNG frames">Rec</button>
+            <button id="btn-record-stop" class="small-btn hidden" title="Stop recording">Stop</button>
+          </div>
+          <div class="output-status hidden" id="output-status-row">
+            <span id="output-status-text"></span>
+          </div>
+          <p class="help-text">High-res output for recording and VJ software. NDI requires cyndilib, Syphon requires syphon-python (macOS), Spout requires SpoutGL (Windows).</p>
+        </div>
+      </div>
+
+      <!-- 9. MIDI (collapsed by default) -->
+      <div class="card card--midi collapsed" data-card="midi" id="midi-section">
+        <div class="card-header">
+          <h2>MIDI</h2>
+          <span class="card-badge" id="badge-midi">No MIDI</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div class="ctrl-row">
+            <label data-tip="MIDI controller port. Connect a controller and select it here.">Port</label>
+            <select id="midi-port-select" class="select-ctrl" title="MIDI input port">
+              <option value="">-- No MIDI --</option>
+            </select>
+            <button id="midi-refresh-btn" class="small-btn" title="Refresh MIDI port list">Scan</button>
+            <span class="midi-activity-dot" id="midi-activity-dot" title="MIDI activity indicator"></span>
+          </div>
+          <div class="ctrl-row">
+            <label>Status</label>
+            <span id="midi-status-text" class="midi-status-text">Disconnected</span>
+            <span id="midi-last-cc" class="midi-cc-display" title="Last received CC message">--</span>
+          </div>
+          <div id="midi-param-list" class="midi-map-list">
+            <!-- Param mappings populated by JS -->
+          </div>
+          <div id="midi-trigger-list" class="midi-map-list">
+            <!-- Trigger mappings populated by JS -->
+          </div>
+          <p class="help-text">Map hardware knobs, faders, and pads to visual parameters. Click Learn, then move a knob to assign. MIDI overrides slider values; audio mappings modulate on top.</p>
+        </div>
+      </div>
+
+      <!-- 10. Feature Analysis (collapsed by default) -->
+      <div class="card card--analysis collapsed" data-card="analysis">
+        <div class="card-header">
+          <h2>Feature Analysis</h2>
+          <span class="card-badge" id="badge-analysis">Idle</span>
+          <span class="card-chevron">&#9650;</span>
+        </div>
+        <div class="card-body">
+          <div class="ctrl-row">
+            <label data-tip="How long to record feature data. Longer = more reliable statistics, but you need audio playing the whole time.">Duration</label>
+            <input type="range" min="10" max="120" step="5" value="60"
+                   id="analysis-duration-slider" class="slider">
+            <span class="val" id="val-analysis-duration">60s</span>
+          </div>
+          <div class="ctrl-row btn-row">
+            <button id="btn-analysis-record" class="segmented-btn" title="Start recording feature data">Record</button>
+            <button id="btn-analysis-stop" class="segmented-btn" disabled title="Stop recording early">Stop</button>
+            <button id="btn-analysis-clear" class="segmented-btn" disabled title="Clear results and reset">Clear</button>
+          </div>
+          <div class="analysis-progress-wrap hidden" id="analysis-progress-wrap">
+            <div class="analysis-progress-bar">
+              <div class="analysis-progress-fill" id="analysis-progress-fill"></div>
+            </div>
+            <span class="analysis-progress-text" id="analysis-progress-text">0 samples</span>
+          </div>
+          <div class="analysis-log-container hidden" id="analysis-log-container">
+            <div class="analysis-log" id="analysis-log"></div>
+          </div>
+          <div class="analysis-results hidden" id="analysis-results">
+            <div class="analysis-headline">
+              <div class="headline-label">Mean |r| (off-diagonal)</div>
+              <div class="headline-value" id="analysis-headline-value">--</div>
+              <div class="headline-samples" id="analysis-headline-samples"></div>
+            </div>
+            <div class="analysis-matrix-wrap">
+              <table class="analysis-matrix" id="analysis-matrix"></table>
+            </div>
+          </div>
+          <p class="help-text">Records all 12 audio features during playback and computes a <a href="https://en.wikipedia.org/wiki/Pearson_correlation_coefficient" target="_blank" rel="noopener" style="color:var(--accent)">Pearson correlation</a> matrix showing how each pair of features moves together. Values near 0 mean the features are independent (good for diverse mappings); values near &plusmn;1 mean they're redundant. The headline &ldquo;Mean |r|&rdquo; summarizes overall independence &mdash; lower is better for getting varied visual responses from different mappings.</p>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Settings modal -->
+    <div id="settings-modal" class="settings-modal hidden">
+      <div class="settings-backdrop"></div>
+      <div class="settings-panel">
+        <div class="settings-header">
+          <h2>Settings</h2>
+          <button class="settings-close" id="settings-close">&times;</button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-section">
+            <h3>Theme</h3>
+            <div class="theme-grid" id="theme-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <footer class="statusbar">
+      <div class="status-meters">
+        <span id="status-rms" title="Root Mean Square — overall audio loudness level">RMS: --</span>
+      </div>
+      <div class="status-info">
+        <span id="status-fps" title="Frames per second — render throughput from server to browser">-- fps</span>
+        <span id="status-pool" title="Grid pool — pre-generated grids ready for the next beat transition">Pool: --</span>
+        <span id="status-mode" title="Current audio mode: idle (ambient), file (playback), or live (capture)">idle</span>
+        <span id="status-output" class="hidden" title="Active video outputs and recording status"></span>
+        <span class="status-beat-dot" id="status-beat-dot"></span>
+        <span class="status-bpm" id="status-bpm"></span>
+        <span id="status-ws" class="ws-dot disconnected" title="WebSocket connection status — green = connected, red = disconnected"></span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Drop overlay -->
+  <div id="drop-overlay" class="drop-overlay hidden">
+    <div class="drop-text">Drop audio file here</div>
+  </div>
+
+  <script src="/static/sortable.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Large binary files
+datasets/
+training-runs/
+/output/
+/uploads/
+models/*.safetensors
+models/*.mlpackage
+
+# Build artifacts
+*.egg-info/
+
+# Generated docs samples (regenerate locally)
+docs/assets/samples/
+
+# IDE
+.idea/
+.vscode/
+*.swp

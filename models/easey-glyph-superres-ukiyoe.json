@@ -1,0 +1,14 @@
+{
+  "architecture": "GlyphSuperRes",
+  "model": {
+    "in_channels": 3,
+    "base_channels": 64,
+    "num_blocks": 4
+  },
+  "training": {
+    "kimg": 500.032,
+    "step": 7813
+  },
+  "state_dict_key": "model",
+  "num_params": 779011
+}
