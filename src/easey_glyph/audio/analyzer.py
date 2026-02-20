@@ -138,6 +138,11 @@ class AudioAnalyzer:
         self._prev_spectrum = None
         self._last_time = None
 
+        # Last computed spectra (exposed for beat detection pipeline)
+        self.last_bass_spectrum: np.ndarray | None = None
+        self.last_mid_spectrum: np.ndarray | None = None
+        self.last_high_spectrum: np.ndarray | None = None
+
         # Adaptive min/max normalization (tracks current dynamic context)
         self._band_running_min = np.full(7, 0.0, dtype=np.float64)
         self._band_running_max = np.full(7, 0.01, dtype=np.float64)
@@ -342,6 +347,11 @@ class AudioAnalyzer:
         high_windowed = high_samples * self._win_high
         high_spectrum = np.abs(np.fft.rfft(high_windowed))
         high_power = high_spectrum ** 2
+
+        # Store spectra for beat detection pipeline
+        self.last_bass_spectrum = bass_spectrum
+        self.last_mid_spectrum = mid_spectrum
+        self.last_high_spectrum = high_spectrum
 
         # --- Band energy (linear for bass/mid, dB for high) ---
         raw_bands = np.zeros(7, dtype=np.float64)

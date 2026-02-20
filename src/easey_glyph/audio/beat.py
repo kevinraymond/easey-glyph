@@ -12,9 +12,12 @@ Works identically for real-time and offline — uses frame.timestamp for timing.
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from .frame import AudioFrame
 
@@ -262,7 +265,7 @@ class TempoEstimator:
         self,
         history_seconds: float = 4.0,
         bpm_range: tuple[float, float] = (40, 300),
-        smoothing_factor: float = 0.1,
+        smoothing_factor: float = 0.15,
         frame_rate: float = 43.0,
     ):
         self._bpm_range = bpm_range
@@ -275,6 +278,7 @@ class TempoEstimator:
 
         self._frame_rate = frame_rate
         self._frame_time = 1.0 / frame_rate  # seconds per frame
+        self._initial_frame_time = self._frame_time
         self._last_time = 0.0
         self._frame_count = 0
 
@@ -304,8 +308,13 @@ class TempoEstimator:
             if 0 < dt < 0.1:  # reject outliers
                 self._frame_time_history.push(dt)
                 if self._frame_time_history.length >= 10:
-                    self._frame_time = self._frame_time_history.mean()
-                    self._frame_rate = 1.0 / max(self._frame_time, 0.001)
+                    measured = self._frame_time_history.mean()
+                    # Clamp to ±15% of initial — prevents wild BPM swings
+                    # from timestamp jitter (e.g. batched frame delivery)
+                    lo = self._initial_frame_time * 0.85
+                    hi = self._initial_frame_time * 1.15
+                    self._frame_time = max(lo, min(hi, measured))
+                    self._frame_rate = 1.0 / self._frame_time
         self._last_time = timestamp
 
         self._onset_history.push(onset_value)
@@ -321,13 +330,21 @@ class TempoEstimator:
             period_s = self._current_period_frames * self._frame_time
             return self._current_bpm, self._current_confidence, period_s
 
-        bpm, confidence, period_frames = self._compute_tempo()
+        raw_bpm, confidence, period_frames = self._compute_tempo()
 
         # Smooth BPM
-        if self._current_bpm > 0 and bpm > 0:
-            self._current_bpm = self._smooth_bpm(self._current_bpm, bpm, confidence)
-        elif bpm > 0:
-            self._current_bpm = bpm
+        prev_bpm = self._current_bpm
+        if self._current_bpm > 0 and raw_bpm > 0:
+            self._current_bpm = self._smooth_bpm(self._current_bpm, raw_bpm, confidence)
+        elif raw_bpm > 0:
+            self._current_bpm = raw_bpm
+
+        if raw_bpm > 0:
+            logger.debug(
+                "TEMPO raw=%.1f conf=%.2f smooth=%.1f→%.1f stable=%.1f(n=%d) ft=%.4f",
+                raw_bpm, confidence, prev_bpm, self._current_bpm,
+                self._stable_bpm, self._stability_counter, self._frame_time,
+            )
 
         self._current_confidence = confidence
         self._current_period_frames = period_frames
@@ -338,6 +355,10 @@ class TempoEstimator:
             if bpm_diff < 0.08:
                 self._stability_counter += 1
             elif bpm_diff > 0.3 and self._stability_counter < 60:
+                logger.debug(
+                    "STABLE reset %.1f→%.1f (diff=%.2f, counter=%d)",
+                    self._stable_bpm, self._current_bpm, bpm_diff, self._stability_counter,
+                )
                 self._stable_bpm = self._current_bpm
                 self._stable_period_frames = period_frames
                 self._stability_counter = 0
@@ -350,6 +371,10 @@ class TempoEstimator:
         is_jumping = (self._stable_bpm > 0 and
                       abs(self._current_bpm - self._stable_bpm) / max(self._stable_bpm, 1) > 0.15)
         if (confidence < 0.5 or is_jumping) and self._stable_bpm > 0 and self._stability_counter > 60:
+            logger.debug(
+                "STABLE override %.1f→%.1f (jumping=%s, conf=%.2f)",
+                self._current_bpm, self._stable_bpm, is_jumping, confidence,
+            )
             self._current_bpm = self._stable_bpm
             self._current_period_frames = self._stable_period_frames
 
@@ -401,6 +426,48 @@ class TempoEstimator:
         best_lag = min_lag + int(np.argmax(enhanced[min_lag:max_lag + 1]))
         best_value = enhanced[best_lag]
 
+        # Octave correction: prefer the longest period (lowest tempo) among
+        # harmonically related candidates.  Without this, lag N often beats
+        # lag 2N because harmonic enhancement adds 0.5*R(2N) to lag N's
+        # score — giving the double-tempo candidate free credit from the
+        # fundamental's autocorrelation.
+        #
+        # Search a window of ±2 lags around 2*best_lag to handle frame
+        # quantization — e.g. lag 9 (284 BPM) should find lag 16 (160 BPM)
+        # not lag 18 (142 BPM).
+        while best_lag * 2 <= max_lag:
+            center = best_lag * 2
+            search_lo = max(min_lag, center - 2)
+            search_hi = min(max_lag, center + 2)
+
+            best_candidate = None
+            best_candidate_val = 0.0
+            for dl in range(search_lo, search_hi + 1):
+                dv = enhanced[dl]
+                # Must be a local peak (not just a random point on the slope)
+                if dl > min_lag and dv < enhanced[dl - 1]:
+                    continue
+                if dl < max_lag and dv < enhanced[dl + 1]:
+                    continue
+                if dv > best_candidate_val:
+                    best_candidate = dl
+                    best_candidate_val = dv
+
+            if best_candidate is not None and best_candidate_val >= best_value * 0.8:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "OCTAVE correct lag %d (%.0f bpm) → %d (%.0f bpm)  "
+                        "vals %.0f vs %.0f (%.0f%%)",
+                        best_lag, 60.0 / (best_lag * self._frame_time),
+                        best_candidate, 60.0 / (best_candidate * self._frame_time),
+                        best_value, best_candidate_val,
+                        100.0 * best_candidate_val / max(best_value, 1),
+                    )
+                best_lag = best_candidate
+                best_value = best_candidate_val
+            else:
+                break
+
         # Parabolic interpolation for sub-frame precision.
         # At high BPMs (e.g. 287 = lag 9), adjacent integer lags span ~30 BPM.
         # Without interpolation, the peak jitters between e.g. lag 9 (287) and
@@ -424,6 +491,18 @@ class TempoEstimator:
         raw_conf = min(1.0, best_value / energy) if energy > 0 else 0.0
         confidence = max(0.15, raw_conf) if raw_conf > 0.05 else raw_conf
 
+        # Log top 3 peaks for diagnostics
+        if logger.isEnabledFor(logging.DEBUG):
+            peak_lags = np.argsort(enhanced[min_lag:max_lag + 1])[::-1][:3] + min_lag
+            peaks_str = ", ".join(
+                f"lag{l}={60.0 / (l * self._frame_time):.0f}bpm({enhanced[l]:.2f})"
+                for l in peak_lags
+            )
+            logger.debug(
+                "AUTOCORR lags=[%d,%d] best=%d refined=%.2f bpm=%.1f conf=%.2f | %s",
+                min_lag, max_lag, best_lag, refined_lag, bpm, confidence, peaks_str,
+            )
+
         if bpm < self._bpm_range[0] or bpm > self._bpm_range[1]:
             return 0.0, 0.0, 0
 
@@ -436,12 +515,21 @@ class TempoEstimator:
         ratio = new / current if current > 0 else 1.0
         is_half = abs(ratio - 0.5) < 0.15
         is_double = abs(ratio - 2.0) < 0.15
-
-        if (is_half or is_double) and confidence < 0.8:
-            return current
-
         change = abs(new - current) / max(current, 1)
+
+        # Octave shifts: snap quickly when confident, reject when not
+        if is_half or is_double:
+            if confidence >= 0.7:
+                effective = 0.5
+                result = current + effective * (new - current)
+                logger.debug("SMOOTH octave snap: cur=%.1f new=%.1f conf=%.2f → %.1f", current, new, confidence, result)
+                return result
+            else:
+                logger.debug("SMOOTH reject octave: cur=%.1f new=%.1f ratio=%.2f conf=%.2f", current, new, ratio, confidence)
+                return current
+
         if change > 0.25 and confidence < 0.7:
+            logger.debug("SMOOTH reject big jump: cur=%.1f new=%.1f change=%.2f conf=%.2f", current, new, change, confidence)
             return current
 
         effective = self._smoothing
@@ -450,7 +538,10 @@ class TempoEstimator:
         elif confidence > 0.7 and change < 0.05:
             effective *= 1.5
 
-        return current + effective * (new - current)
+        result = current + effective * (new - current)
+        if abs(new - current) > 5:
+            logger.debug("SMOOTH accept: cur=%.1f new=%.1f conf=%.2f eff=%.3f → %.1f", current, new, confidence, effective, result)
+        return result
 
     @property
     def period_seconds(self) -> float:
@@ -701,7 +792,7 @@ class BeatDetector:
         self._tempo_estimator = TempoEstimator(
             history_seconds=4.0,
             bpm_range=(40, 300),
-            smoothing_factor=0.1,
+            smoothing_factor=0.15,
             frame_rate=frame_rate,
         )
         self._beat_scheduler = BeatScheduler()

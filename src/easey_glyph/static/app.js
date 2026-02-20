@@ -27,6 +27,8 @@
     { value: "ease_out", label: "Ease Out" },
     { value: "ease_in_out", label: "Ease In/Out" },
     { value: "exponential", label: "Exponential" },
+    { value: "logarithmic", label: "Logarithmic" },
+    { value: "threshold", label: "Threshold" },
   ];
 
   // Which slider keys get audio mapping in the Mappings card

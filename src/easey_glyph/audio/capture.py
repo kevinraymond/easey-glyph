@@ -109,6 +109,13 @@ class AudioCapture:
 
                 mono = data[:, 0] if data.ndim > 1 else data.flatten()
                 frame = self.analyzer.analyze(mono)
+                # Pass multi-resolution spectra to beat pipeline
+                if self.analyzer.last_bass_spectrum is not None:
+                    self.beat_detector.set_spectra(
+                        self.analyzer.last_bass_spectrum,
+                        self.analyzer.last_mid_spectrum,
+                        self.analyzer.last_high_spectrum,
+                    )
                 frame = self.beat_detector.process(frame)
 
                 self.latest_frame = frame
