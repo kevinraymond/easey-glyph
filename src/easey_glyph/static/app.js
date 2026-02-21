@@ -199,6 +199,13 @@
   // Track which sliders are being dragged to avoid fighting with peer updates
   var _draggingKeys = new Set();
 
+  // Spectral demo mode
+  var shaderDemo = null;
+  var demoActive = false;
+  var demoHelpVisible = false;
+  var _demoHudTimer = null;
+  var _demoHelpEls = null;
+
   var canvas = document.getElementById("canvas");
   var ctx = canvas.getContext("2d");
   var elLoadingOverlay = document.getElementById("loading-overlay");
@@ -402,6 +409,19 @@
           el.style.height = pct.toFixed(0) + "%";
           var valEl = elMeterVals[fk];
           if (valEl) valEl.textContent = pct.toFixed(0);
+        }
+      }
+      // Route to shader demo
+      if (shaderDemo && demoActive) {
+        shaderDemo.updateFeatures(meta.features);
+        // Update help overlay live values
+        if (demoHelpVisible && _demoHelpEls) {
+          for (var dhk in _demoHelpEls) {
+            var v = meta.features[dhk] || 0;
+            var el = _demoHelpEls[dhk];
+            el.textContent = (v * 100).toFixed(0);
+            el.classList.toggle("hot", v > 0.3);
+          }
         }
       }
     }
@@ -1357,7 +1377,7 @@
       onset_threshold: 1.4, img2img_strength: 0.5, cfg_scale: 0,
     },
     toggles: { pixel_upscale: false, superres: false, alpha_preview: false },
-    selects: { edge_enhance: "off", cfg_audio: "random" },
+    selects: { edge_enhance: "off", cfg_audio: "random", cfg_features: "all" },
     morph: "ambient",
   };
 
@@ -1668,10 +1688,10 @@
     },
     {
       name: "Spectral Demo",
-      tip: "Semantic CFG \u2014 model generates visuals that match audio meaning (bass=heavy, treble=bright, etc.). Requires realtime gen mode.",
-      params: { cfg_scale: 5.0 },
-      toggles: {},
-      selects: { cfg_audio: "live" },
+      tip: "Semantic CFG — 4 spectral features drive generation in realtime (warmth, saturation, texture, structure). Post-processing adds reactivity.",
+      params: { cfg_scale: 3.0, fg_brightness: 1.0, render_scale: 4, sharpen: 0, saturation: 1.0, contrast: 1.0, gamma: 1.0, posterize: 0, grain: 0, scanlines: 0, opacity: 1.0 },
+      toggles: { pixel_upscale: false },
+      selects: { cfg_audio: "live", cfg_features: "spectral4" },
       morph: "beat",
       gen_mode: "realtime",
       mappings: {
@@ -3264,6 +3284,146 @@
     }
   })();
 
+  // ─── Spectral Demo Mode ─────────────────────────────────────────
+
+  function toggleDemo() {
+    var canvasEl = document.getElementById("demo-canvas");
+    var hud = document.getElementById("demo-hud");
+    var btn = document.getElementById("btn-demo");
+    if (!canvasEl || !hud || !btn) return;
+
+    if (demoActive) {
+      // Deactivate
+      demoActive = false;
+      canvasEl.classList.remove("active");
+      hud.classList.remove("active");
+      btn.classList.remove("active");
+      if (shaderDemo) shaderDemo.stop();
+      _clearDemoHudTimer();
+      // Hide help overlay
+      if (demoHelpVisible) {
+        demoHelpVisible = false;
+        var helpPanel = document.getElementById("demo-help");
+        var helpBtn2 = document.getElementById("demo-help-btn");
+        if (helpPanel) helpPanel.classList.remove("active");
+        if (helpBtn2) helpBtn2.classList.remove("active");
+      }
+      return;
+    }
+
+    // Lazy-create ShaderDemo on first toggle
+    if (!shaderDemo) {
+      if (!ShaderDemo.isWebGL2Supported()) {
+        btn.classList.add("unsupported");
+        btn.title = "WebGL2 not supported in this browser";
+        return;
+      }
+      shaderDemo = new ShaderDemo(canvasEl);
+      if (!shaderDemo.isSupported()) {
+        btn.classList.add("unsupported");
+        btn.title = "WebGL2 context creation failed";
+        shaderDemo = null;
+        return;
+      }
+    }
+
+    // Activate
+    demoActive = true;
+    canvasEl.classList.add("active");
+    hud.classList.add("active");
+    btn.classList.add("active");
+    shaderDemo.start();
+    _resetDemoHudTimer();
+  }
+
+  function _resetDemoHudTimer() {
+    var hud = document.getElementById("demo-hud");
+    if (!hud) return;
+    hud.classList.remove("faded");
+    _clearDemoHudTimer();
+    _demoHudTimer = setTimeout(function () {
+      if (demoActive) hud.classList.add("faded");
+    }, 3000);
+  }
+
+  function _clearDemoHudTimer() {
+    if (_demoHudTimer) {
+      clearTimeout(_demoHudTimer);
+      _demoHudTimer = null;
+    }
+  }
+
+  function toggleDemoHelp() {
+    var helpPanel = document.getElementById("demo-help");
+    var helpBtn = document.getElementById("demo-help-btn");
+    if (!helpPanel) return;
+    demoHelpVisible = !demoHelpVisible;
+    helpPanel.classList.toggle("active", demoHelpVisible);
+    if (helpBtn) helpBtn.classList.toggle("active", demoHelpVisible);
+    // Cache DOM refs for live value updates on first show
+    if (demoHelpVisible && !_demoHelpEls) {
+      _demoHelpEls = {};
+      var keys = [
+        "bass", "mid", "treble", "rms", "beat_phase", "onset_strength",
+        "spectral_centroid", "spectral_flux", "spectral_flatness",
+        "spectral_rolloff", "spectral_bandwidth", "zero_crossing_rate"
+      ];
+      for (var i = 0; i < keys.length; i++) {
+        var el = document.getElementById("dh-" + keys[i]);
+        if (el) _demoHelpEls[keys[i]] = el;
+      }
+    }
+  }
+
+  function initDemo() {
+    var btn = document.getElementById("btn-demo");
+    var closeBtn = document.getElementById("demo-close");
+    var helpBtn = document.getElementById("demo-help-btn");
+    var canvasEl = document.getElementById("demo-canvas");
+
+    if (btn) {
+      btn.addEventListener("click", toggleDemo);
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", toggleDemo);
+    }
+
+    if (helpBtn) {
+      helpBtn.addEventListener("click", function () {
+        if (demoActive) toggleDemoHelp();
+      });
+    }
+
+    // Mouse movement on demo canvas shows HUD
+    if (canvasEl) {
+      canvasEl.addEventListener("mousemove", function () {
+        if (demoActive) _resetDemoHudTimer();
+      });
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", function (e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "d" || e.key === "D") {
+        toggleDemo();
+        e.preventDefault();
+      }
+      if ((e.key === "h" || e.key === "H") && demoActive) {
+        toggleDemoHelp();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      if (e.key === "Escape" && demoActive) {
+        toggleDemo();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
+
   // ─── Init ───────────────────────────────────────────────────────
 
   initSettings();
@@ -3287,5 +3447,6 @@
     body.style.overflow = 'visible';
   });
   initSortable();
+  initDemo();
   connect();
 })();

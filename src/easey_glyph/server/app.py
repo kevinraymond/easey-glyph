@@ -224,6 +224,7 @@ def _get_param_value(key: str):
     if key == "time_schedule": return state.grid_pool.schedule
     if key == "cfg_scale": return state.grid_pool.cfg_scale
     if key == "cfg_audio": return state.grid_pool.cfg_audio
+    if key == "cfg_features": return "spectral4" if state.grid_pool.cfg_feature_mask is not None else "all"
     if key == "onset_threshold": return state.onset_threshold
     if key == "img2img_strength": return state.img2img_strength
     if key == "img2img_enabled": return state.img2img_enabled
@@ -259,6 +260,7 @@ def _build_state_snapshot() -> dict:
         "time_schedule": state.grid_pool.schedule,
         "cfg_scale": state.grid_pool.cfg_scale,
         "cfg_audio": state.grid_pool.cfg_audio,
+        "cfg_features": "spectral4" if state.grid_pool.cfg_feature_mask is not None else "all",
         "onset_threshold": state.onset_threshold,
         "img2img_strength": state.img2img_strength,
         "img2img_enabled": state.img2img_enabled,
@@ -873,7 +875,8 @@ def _make_cfg_audio(n: int = 1) -> torch.Tensor | None:
         return None
     if pool.cfg_audio == "live":
         af = state.get_audio_frame()
-        return _audio_frame_to_tensor(af, state.device).expand(n, -1)
+        audio = _audio_frame_to_tensor(af, state.device).expand(n, -1)
+        return pool._apply_feature_mask(audio)
     return torch.rand(n, 12, device=state.device)
 
 
@@ -1600,6 +1603,21 @@ def _handle_param(msg: dict):
     elif key == "cfg_audio":
         if str(value) in ("random", "live"):
             state.grid_pool.update_cfg(cfg_audio=str(value))
+    elif key == "cfg_features":
+        value_str = str(value)
+        _CFG_FEATURE_MASKS = {
+            "all": None,
+            "spectral4": [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0],  # phase, centroid, flux, flatness
+        }
+        if value_str in _CFG_FEATURE_MASKS:
+            state.grid_pool.update_cfg(cfg_feature_mask=_CFG_FEATURE_MASKS[value_str])
+        elif value_str.startswith("["):
+            try:
+                mask = json.loads(value_str)
+                if isinstance(mask, list) and len(mask) == 12:
+                    state.grid_pool.update_cfg(cfg_feature_mask=[float(m) for m in mask])
+            except (json.JSONDecodeError, ValueError):
+                pass
     elif key == "onset_threshold":
         state.onset_threshold = float(value)
         if state.capture is not None:
