@@ -59,7 +59,7 @@ def make_audio_vector(feature_idx: int | None = None, value: float = 1.0,
 def main():
     parser = argparse.ArgumentParser(description="Test spectral semantic conditioning")
     parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--cfg-scale", type=float, default=5.0)
+    parser.add_argument("--cfg-scale", type=float, default=3.0)
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="output/spectral_test.png")
