@@ -14,8 +14,13 @@ class GlyphDataset:
     def __init__(self, path: str, max_images: int | None = None):
         raw = torch.load(path, map_location="cpu", weights_only=True)
         self.data: Tensor = raw["data"].float()  # [N, 16, 32, 32]
+        self.labels: Tensor | None = raw.get("labels", None)  # [N, 12] or None
+        if self.labels is not None:
+            self.labels = self.labels.float()
         if max_images is not None:
             self.data = self.data[:max_images]
+            if self.labels is not None:
+                self.labels = self.labels[:max_images]
         self._on_gpu = False
 
     def __len__(self) -> int:
@@ -23,6 +28,8 @@ class GlyphDataset:
 
     def to_gpu(self, device: torch.device):
         self.data = self.data.to(device)
+        if self.labels is not None:
+            self.labels = self.labels.to(device)
         self._on_gpu = True
 
     def sample_batch(self, batch_size: int) -> tuple[Tensor, Tensor]:

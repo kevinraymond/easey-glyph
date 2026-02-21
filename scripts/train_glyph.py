@@ -66,9 +66,13 @@ class FlowMatcher:
 class AudioConditioningGenerator:
     """Fixed per-image audio labels with unconditional dropout."""
 
-    def __init__(self, num_images: int, device: torch.device, uncond_ratio: float = 0.2):
+    def __init__(self, num_images: int, device: torch.device,
+                 uncond_ratio: float = 0.2, labels: Tensor | None = None):
         self.uncond_ratio = uncond_ratio
-        self.labels = torch.rand(num_images, 12, device=device)
+        if labels is not None:
+            self.labels = labels.to(device)
+        else:
+            self.labels = torch.rand(num_images, 12, device=device)
 
     def sample(self, indices: Tensor) -> Tensor | None:
         if torch.rand(1).item() < self.uncond_ratio:
@@ -344,7 +348,22 @@ def train(args):
 
     # Audio conditioning (fixed per-image labels)
     uncond_ratio = train_cfg.get("uncond_ratio", 0.2)
-    audio_gen = AudioConditioningGenerator(len(dataset), device, uncond_ratio=uncond_ratio)
+    audio_labels = None
+    if args.audio_labels:
+        label_data = torch.load(args.audio_labels, map_location="cpu", weights_only=True)
+        audio_labels = label_data["labels"] if "labels" in label_data else label_data
+        if is_main:
+            print(f"Audio labels: loaded {audio_labels.shape} from {args.audio_labels}")
+    elif dataset.labels is not None:
+        audio_labels = dataset.labels
+        if is_main:
+            print(f"Audio labels: using dataset-embedded labels {audio_labels.shape}")
+    else:
+        if is_main:
+            print("Audio labels: random (no pre-computed labels found)")
+    audio_gen = AudioConditioningGenerator(
+        len(dataset), device, uncond_ratio=uncond_ratio, labels=audio_labels,
+    )
 
     # Training config
     total_kimg = train_cfg["total_kimg"]
@@ -514,6 +533,8 @@ def main():
     parser.add_argument("--snap-kimg", type=float, default=None)
     parser.add_argument("--ema-decay", type=float, default=None)
     parser.add_argument("--warmup-steps", type=int, default=200, help="Linear LR warmup steps")
+    parser.add_argument("--audio-labels", type=str, default=None,
+                        help="Path to .pt file with pre-computed audio labels (spectral demo)")
     args = parser.parse_args()
 
     train(args)

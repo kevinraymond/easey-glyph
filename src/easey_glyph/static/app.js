@@ -219,9 +219,18 @@
   var elStatusBeatDot = document.getElementById("status-beat-dot");
   var elMeters = {};
   var elMeterVals = {};
+  var SPECTRAL_SEMANTIC_LABELS = {
+    bass: "Heavy shapes", mid: "Medium detail", treble: "Fine detail",
+    rms: "Brightness", beat_phase: "Warmth", onset_strength: "Sharpness",
+    spectral_centroid: "Saturation", spectral_flux: "Patchiness",
+    spectral_flatness: "Noise/Order", spectral_rolloff: "Light dist.",
+    spectral_bandwidth: "Dyn. range", zero_crossing_rate: "Crossings",
+  };
+  var elMeterSemantics = {};
   ["bass","mid","treble","rms","beat_phase","onset_strength","spectral_centroid","spectral_flux","spectral_flatness","spectral_rolloff","spectral_bandwidth","zero_crossing_rate"].forEach(function(k) {
     elMeters[k] = document.getElementById("meter-" + k);
     elMeterVals[k] = document.getElementById("mval-" + k);
+    elMeterSemantics[k] = document.getElementById("msem-" + k);
   });
   var elSrToggle = document.querySelector('.toggle-ctrl[data-key="superres"]');
   var elScale2xRow = document.querySelector('.toggle-ctrl[data-key="pixel_upscale"]');
@@ -1657,6 +1666,19 @@
                           lo_thresh: 0.10, hi_thresh: 0.70 },
       },
     },
+    {
+      name: "Spectral Demo",
+      tip: "Semantic CFG \u2014 model generates visuals that match audio meaning (bass=heavy, treble=bright, etc.). Requires realtime gen mode.",
+      params: { cfg_scale: 5.0 },
+      toggles: {},
+      selects: { cfg_audio: "live" },
+      morph: "beat",
+      gen_mode: "realtime",
+      mappings: {
+        contrast: { source: "onset_strength", min: 0.95, max: 1.3, curve: "ease_out" },
+        opacity:  { source: "rms",            min: 0.8,  max: 1.0 },
+      },
+    },
   ];
 
   // ─── A/B Comparison ──────────────────────────────────────────
@@ -1708,6 +1730,7 @@
       toggles: toggles,
       selects: selects,
       morph: morph,
+      gen_mode: preset.gen_mode || null,
       mappings: mappings,
     };
   }
@@ -1839,6 +1862,16 @@
     if (morphBtn) morphBtn.classList.add("active");
     send({ type: "morph", mode: morph });
 
+    // 6b. Set gen mode (pool or realtime) if specified
+    if (preset.gen_mode) {
+      document.querySelectorAll("[data-gen]").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.gen === preset.gen_mode);
+      });
+      send({ type: "gen_mode", mode: preset.gen_mode });
+      var poolActions = document.getElementById("pool-actions");
+      if (poolActions) poolActions.classList.toggle("disabled", preset.gen_mode === "realtime");
+    }
+
     // 7. Set audio mappings via centralized Mappings card
     if (preset.mappings) {
       for (var mkey in preset.mappings) {
@@ -1862,6 +1895,16 @@
         ui.threshDisplay.textContent = Math.round(loThresh * 100) + "% \u2192 " + Math.round(hiThresh * 100) + "%";
 
         sendCurrentMapping(mkey);
+      }
+    }
+
+    // Toggle semantic labels on audio meters
+    var isSpectral = preset.name === "Spectral Demo";
+    for (var semKey in elMeterSemantics) {
+      var semEl = elMeterSemantics[semKey];
+      if (semEl) {
+        semEl.style.display = isSpectral ? "" : "none";
+        semEl.textContent = SPECTRAL_SEMANTIC_LABELS[semKey] || "";
       }
     }
 

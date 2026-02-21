@@ -35,6 +35,7 @@ Themes:
   pixel           16-bit RPG overworlds, sprite sheets, side-scrollers, limited palettes
   botanical       Pressed flowers, scientific illustration, cross-sections, light backgrounds
   darkpsy         B&W sacred geometry, glitch, biomechanical — neon accents, mixed polarity
+  spectral        Wide visual variety for semantic audio training — dark/bright, smooth/chaotic
 
 Models:
   9b   flux-2-klein-9b-fp8 (default, better quality)
