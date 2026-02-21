@@ -2322,3 +2322,140 @@ body.is-mobile [data-morph].active {
   border-color: rgba(255, 255, 255, 0.6);
 }
 
+/* Panel toggle button in HUD */
+.demo-panel-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.demo-panel-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.demo-panel-btn.active {
+  background: rgba(0, 200, 220, 0.3);
+  border-color: rgba(0, 200, 220, 0.6);
+  color: #fff;
+}
+
+/* ─── Demo Effects Panel ─── */
+
+.demo-panel {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 1001;
+  display: none;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  min-width: 290px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.demo-panel.active {
+  display: block;
+}
+
+.demo-panel-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 6px;
+}
+
+.demo-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: background 0.1s;
+}
+
+.demo-panel-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.demo-panel-toggle {
+  width: 13px;
+  height: 13px;
+  accent-color: #00ccd8;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.demo-panel-label {
+  width: 62px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.demo-panel-desc {
+  flex: 1;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.demo-panel-bar {
+  width: 40px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.demo-panel-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #006e73, #00ccd8);
+  border-radius: 3px;
+  transition: width 80ms linear;
+}
+
+.demo-panel-val {
+  width: 32px;
+  text-align: right;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.demo-panel-row.disabled .demo-panel-label,
+.demo-panel-row.disabled .demo-panel-desc {
+  opacity: 0.35;
+}
+
+.demo-panel-row.disabled .demo-panel-bar-fill {
+  background: rgba(255, 255, 255, 0.15);
+}
+
