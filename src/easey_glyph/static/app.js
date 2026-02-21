@@ -202,9 +202,7 @@
   // Spectral demo mode
   var shaderDemo = null;
   var demoActive = false;
-  var demoHelpVisible = false;
   var _demoHudTimer = null;
-  var _demoHelpEls = null;
 
   var canvas = document.getElementById("canvas");
   var ctx = canvas.getContext("2d");
@@ -409,19 +407,6 @@
           el.style.height = pct.toFixed(0) + "%";
           var valEl = elMeterVals[fk];
           if (valEl) valEl.textContent = pct.toFixed(0);
-        }
-      }
-      // Route to shader demo
-      if (shaderDemo && demoActive) {
-        shaderDemo.updateFeatures(meta.features);
-        // Update help overlay live values
-        if (demoHelpVisible && _demoHelpEls) {
-          for (var dhk in _demoHelpEls) {
-            var v = meta.features[dhk] || 0;
-            var el = _demoHelpEls[dhk];
-            el.textContent = (v * 100).toFixed(0);
-            el.classList.toggle("hot", v > 0.3);
-          }
         }
       }
     }
@@ -3293,21 +3278,12 @@
     if (!canvasEl || !hud || !btn) return;
 
     if (demoActive) {
-      // Deactivate
       demoActive = false;
       canvasEl.classList.remove("active");
       hud.classList.remove("active");
       btn.classList.remove("active");
       if (shaderDemo) shaderDemo.stop();
       _clearDemoHudTimer();
-      // Hide help overlay
-      if (demoHelpVisible) {
-        demoHelpVisible = false;
-        var helpPanel = document.getElementById("demo-help");
-        var helpBtn2 = document.getElementById("demo-help-btn");
-        if (helpPanel) helpPanel.classList.remove("active");
-        if (helpBtn2) helpBtn2.classList.remove("active");
-      }
       return;
     }
 
@@ -3353,32 +3329,9 @@
     }
   }
 
-  function toggleDemoHelp() {
-    var helpPanel = document.getElementById("demo-help");
-    var helpBtn = document.getElementById("demo-help-btn");
-    if (!helpPanel) return;
-    demoHelpVisible = !demoHelpVisible;
-    helpPanel.classList.toggle("active", demoHelpVisible);
-    if (helpBtn) helpBtn.classList.toggle("active", demoHelpVisible);
-    // Cache DOM refs for live value updates on first show
-    if (demoHelpVisible && !_demoHelpEls) {
-      _demoHelpEls = {};
-      var keys = [
-        "bass", "mid", "treble", "rms", "beat_phase", "onset_strength",
-        "spectral_centroid", "spectral_flux", "spectral_flatness",
-        "spectral_rolloff", "spectral_bandwidth", "zero_crossing_rate"
-      ];
-      for (var i = 0; i < keys.length; i++) {
-        var el = document.getElementById("dh-" + keys[i]);
-        if (el) _demoHelpEls[keys[i]] = el;
-      }
-    }
-  }
-
   function initDemo() {
     var btn = document.getElementById("btn-demo");
     var closeBtn = document.getElementById("demo-close");
-    var helpBtn = document.getElementById("demo-help-btn");
     var canvasEl = document.getElementById("demo-canvas");
 
     if (btn) {
@@ -3387,12 +3340,6 @@
 
     if (closeBtn) {
       closeBtn.addEventListener("click", toggleDemo);
-    }
-
-    if (helpBtn) {
-      helpBtn.addEventListener("click", function () {
-        if (demoActive) toggleDemoHelp();
-      });
     }
 
     // Mouse movement on demo canvas shows HUD
@@ -3410,11 +3357,6 @@
       if (e.key === "d" || e.key === "D") {
         toggleDemo();
         e.preventDefault();
-      }
-      if ((e.key === "h" || e.key === "H") && demoActive) {
-        toggleDemoHelp();
-        e.preventDefault();
-        e.stopImmediatePropagation();
       }
       if (e.key === "Escape" && demoActive) {
         toggleDemo();

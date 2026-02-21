@@ -2232,3 +2232,93 @@ body.is-mobile [data-morph].active {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ─── Spectral Demo Mode ─── */
+
+.demo-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  display: none;
+}
+
+.demo-canvas.active {
+  display: block;
+}
+
+/* Demo toggle button in topbar */
+.demo-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+  padding: 0;
+}
+
+.demo-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.demo-btn.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--btn-active-text);
+}
+
+.demo-btn.unsupported {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* HUD overlay (close button, top-right) */
+.demo-hud {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1001;
+  display: none;
+  transition: opacity 0.3s;
+}
+
+.demo-hud.active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.demo-hud.faded {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.demo-close-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.demo-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+

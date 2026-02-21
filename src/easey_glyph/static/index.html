@@ -7,11 +7,18 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <!-- Spectral Demo Mode: fullscreen WebGL2 shader overlay -->
+  <canvas id="demo-canvas" class="demo-canvas"></canvas>
+  <div id="demo-hud" class="demo-hud">
+    <button id="demo-close" class="demo-close-btn" title="Exit demo mode (Esc)">&times;</button>
+  </div>
+
   <div class="layout">
     <!-- Top bar (simplified — audio controls moved to Audio card) -->
     <header class="topbar">
       <h1>EASEy-GLYPH</h1>
       <div class="topbar-actions">
+        <button id="btn-demo" class="demo-btn" title="Spectral demo mode (D)">&#9670;</button>
         <button id="btn-settings" class="settings-btn" title="Settings">&#9881;</button>
         <button id="btn-help" class="help-btn" title="Toggle help descriptions (H)">?</button>
       </div>
@@ -663,6 +670,7 @@
   </div>
 
   <script src="/static/sortable.min.js"></script>
+  <script src="/static/shader_demo.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
