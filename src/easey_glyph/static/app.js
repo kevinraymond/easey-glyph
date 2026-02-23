@@ -199,6 +199,13 @@
   // Track which sliders are being dragged to avoid fighting with peer updates
   var _draggingKeys = new Set();
 
+  // Spectral demo mode
+  var shaderDemo = null;
+  var demoActive = false;
+  var _demoHudTimer = null;
+  var _demoPanelVisible = false;
+  var _demoPanelRows = [];
+
   var canvas = document.getElementById("canvas");
   var ctx = canvas.getContext("2d");
   var elLoadingOverlay = document.getElementById("loading-overlay");
@@ -583,6 +590,12 @@
       if (analysisSamples.length >= targetSamples) {
         analysisFinish();
       }
+    }
+
+    // Stream audio features to shader demo
+    if (shaderDemo && demoActive && meta.features) {
+      shaderDemo.updateFeatures(meta.features);
+      _updateDemoPanel(meta.features);
     }
 
     // Update badges
@@ -1357,7 +1370,7 @@
       onset_threshold: 1.4, img2img_strength: 0.5, cfg_scale: 0,
     },
     toggles: { pixel_upscale: false, superres: false, alpha_preview: false },
-    selects: { edge_enhance: "off", cfg_audio: "random" },
+    selects: { edge_enhance: "off", cfg_audio: "random", cfg_features: "all" },
     morph: "ambient",
   };
 
@@ -1668,10 +1681,10 @@
     },
     {
       name: "Spectral Demo",
-      tip: "Semantic CFG \u2014 model generates visuals that match audio meaning (bass=heavy, treble=bright, etc.). Requires realtime gen mode.",
-      params: { cfg_scale: 5.0 },
-      toggles: {},
-      selects: { cfg_audio: "live" },
+      tip: "Semantic CFG — 4 spectral features drive generation in realtime (warmth, saturation, texture, structure). Post-processing adds reactivity.",
+      params: { cfg_scale: 3.0, fg_brightness: 1.0, render_scale: 4, sharpen: 0, saturation: 1.0, contrast: 1.0, gamma: 1.0, posterize: 0, grain: 0, scanlines: 0, opacity: 1.0 },
+      toggles: { pixel_upscale: false },
+      selects: { cfg_audio: "live", cfg_features: "spectral4" },
       morph: "beat",
       gen_mode: "realtime",
       mappings: {
@@ -3264,6 +3277,221 @@
     }
   })();
 
+  // ─── Spectral Demo Mode ─────────────────────────────────────────
+
+  function _buildDemoPanel() {
+    var panel = document.getElementById("demo-panel");
+    if (!panel || _demoPanelRows.length > 0) return;
+
+    var title = document.createElement("div");
+    title.className = "demo-panel-title";
+    title.textContent = "Audio Effects";
+    panel.appendChild(title);
+
+    var keys = ShaderDemo.FEATURE_KEYS;
+    var labels = ShaderDemo.FEATURE_LABELS;
+    var descs = ShaderDemo.FEATURE_DESCS;
+
+    for (var i = 0; i < keys.length; i++) {
+      var row = document.createElement("div");
+      row.className = "demo-panel-row";
+
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = true;
+      cb.className = "demo-panel-toggle";
+      cb.dataset.featureKey = keys[i];
+
+      var label = document.createElement("span");
+      label.className = "demo-panel-label";
+      label.textContent = labels[i];
+
+      var desc = document.createElement("span");
+      desc.className = "demo-panel-desc";
+      desc.textContent = descs[i];
+
+      var barWrap = document.createElement("div");
+      barWrap.className = "demo-panel-bar";
+      var barFill = document.createElement("div");
+      barFill.className = "demo-panel-bar-fill";
+      barWrap.appendChild(barFill);
+
+      var valSpan = document.createElement("span");
+      valSpan.className = "demo-panel-val";
+      valSpan.textContent = "0.00";
+
+      row.appendChild(cb);
+      row.appendChild(label);
+      row.appendChild(desc);
+      row.appendChild(barWrap);
+      row.appendChild(valSpan);
+      panel.appendChild(row);
+
+      _demoPanelRows.push({ key: keys[i], row: row, cb: cb, bar: barFill, val: valSpan });
+
+      // Checkbox change → toggle effect in shader demo
+      (function (key, rowEl) {
+        cb.addEventListener("change", function (e) {
+          e.stopPropagation();
+          if (shaderDemo) shaderDemo.setEnable(key, this.checked);
+          rowEl.classList.toggle("disabled", !this.checked);
+        });
+      })(keys[i], row);
+    }
+
+    // Prevent panel interactions from bubbling to canvas
+    panel.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+    panel.addEventListener("click", function (e) { e.stopPropagation(); });
+    // Don't trigger HUD timer reset on panel mouse movement
+    panel.addEventListener("mousemove", function (e) { e.stopPropagation(); });
+  }
+
+  function _updateDemoPanel(features) {
+    if (!_demoPanelVisible) return;
+    for (var i = 0; i < _demoPanelRows.length; i++) {
+      var r = _demoPanelRows[i];
+      var v = features[r.key] || 0;
+      r.bar.style.width = (v * 100).toFixed(0) + "%";
+      r.val.textContent = v.toFixed(2);
+    }
+  }
+
+  function toggleDemoPanel() {
+    var panel = document.getElementById("demo-panel");
+    var btn = document.getElementById("demo-panel-btn");
+    if (!panel) return;
+
+    _demoPanelVisible = !_demoPanelVisible;
+    panel.classList.toggle("active", _demoPanelVisible);
+    if (btn) btn.classList.toggle("active", _demoPanelVisible);
+
+    // Sync checkbox states with shader demo enables
+    if (_demoPanelVisible && shaderDemo) {
+      var enables = shaderDemo.getEnables();
+      for (var i = 0; i < _demoPanelRows.length; i++) {
+        var r = _demoPanelRows[i];
+        r.cb.checked = enables[r.key];
+        r.row.classList.toggle("disabled", !enables[r.key]);
+      }
+    }
+  }
+
+  function toggleDemo() {
+    var canvasEl = document.getElementById("demo-canvas");
+    var hud = document.getElementById("demo-hud");
+    var btn = document.getElementById("btn-demo");
+    if (!canvasEl || !hud || !btn) return;
+
+    if (demoActive) {
+      demoActive = false;
+      canvasEl.classList.remove("active");
+      hud.classList.remove("active");
+      btn.classList.remove("active");
+      if (shaderDemo) shaderDemo.stop();
+      _clearDemoHudTimer();
+      // Hide panel on exit
+      var panel = document.getElementById("demo-panel");
+      var panelBtn = document.getElementById("demo-panel-btn");
+      if (panel) panel.classList.remove("active");
+      if (panelBtn) panelBtn.classList.remove("active");
+      _demoPanelVisible = false;
+      return;
+    }
+
+    // Lazy-create ShaderDemo on first toggle
+    if (!shaderDemo) {
+      if (!ShaderDemo.isWebGL2Supported()) {
+        btn.classList.add("unsupported");
+        btn.title = "WebGL2 not supported in this browser";
+        return;
+      }
+      shaderDemo = new ShaderDemo(canvasEl);
+      if (!shaderDemo.isSupported()) {
+        btn.classList.add("unsupported");
+        btn.title = "WebGL2 context creation failed";
+        shaderDemo = null;
+        return;
+      }
+    }
+
+    // Activate
+    demoActive = true;
+    canvasEl.classList.add("active");
+    hud.classList.add("active");
+    btn.classList.add("active");
+    shaderDemo.start();
+    _resetDemoHudTimer();
+  }
+
+  function _resetDemoHudTimer() {
+    var hud = document.getElementById("demo-hud");
+    if (!hud) return;
+    hud.classList.remove("faded");
+    _clearDemoHudTimer();
+    _demoHudTimer = setTimeout(function () {
+      if (demoActive) hud.classList.add("faded");
+    }, 3000);
+  }
+
+  function _clearDemoHudTimer() {
+    if (_demoHudTimer) {
+      clearTimeout(_demoHudTimer);
+      _demoHudTimer = null;
+    }
+  }
+
+  function initDemo() {
+    var btn = document.getElementById("btn-demo");
+    var closeBtn = document.getElementById("demo-close");
+    var canvasEl = document.getElementById("demo-canvas");
+    var panelBtn = document.getElementById("demo-panel-btn");
+
+    if (btn) {
+      btn.addEventListener("click", toggleDemo);
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", toggleDemo);
+    }
+
+    if (panelBtn) {
+      panelBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        toggleDemoPanel();
+      });
+    }
+
+    // Build panel rows (once, reused across demo toggles)
+    _buildDemoPanel();
+
+    // Mouse movement on demo canvas shows HUD
+    if (canvasEl) {
+      canvasEl.addEventListener("mousemove", function () {
+        if (demoActive) _resetDemoHudTimer();
+      });
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", function (e) {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "d" || e.key === "D") {
+        toggleDemo();
+        e.preventDefault();
+      }
+      if ((e.key === "c" || e.key === "C") && demoActive) {
+        toggleDemoPanel();
+        e.preventDefault();
+      }
+      if (e.key === "Escape" && demoActive) {
+        toggleDemo();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
+
   // ─── Init ───────────────────────────────────────────────────────
 
   initSettings();
@@ -3287,5 +3515,6 @@
     body.style.overflow = 'visible';
   });
   initSortable();
+  initDemo();
   connect();
 })();

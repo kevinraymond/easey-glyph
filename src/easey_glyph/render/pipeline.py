@@ -644,6 +644,7 @@ class GridPool:
         self.schedule: str = "uniform"
         self.cfg_scale: float = 0.0
         self.cfg_audio: str = "random"  # "random" | "live"
+        self.cfg_feature_mask: list[float] | None = None  # None = all features, else [12] of 0.0/1.0
         self._live_audio_features: torch.Tensor | None = None  # [1, 12] snapshot
 
         self._queue: SimpleQueue[torch.Tensor] = SimpleQueue()
@@ -662,12 +663,19 @@ class GridPool:
         self._thread = threading.Thread(target=self._run, daemon=True, name="grid-pool")
         self._thread.start()
 
+    def _apply_feature_mask(self, audio: torch.Tensor) -> torch.Tensor:
+        """Mask audio features: masked channels replaced with 0.5 (neutral)."""
+        if self.cfg_feature_mask is None:
+            return audio
+        mask = torch.tensor(self.cfg_feature_mask, device=audio.device)
+        return audio * mask + (1.0 - mask) * 0.5
+
     def _make_audio_tensor(self, n: int) -> torch.Tensor | None:
         """Build audio conditioning tensor for CFG."""
         if self.cfg_scale <= 0:
             return None
         if self.cfg_audio == "live" and self._live_audio_features is not None:
-            return self._live_audio_features.expand(n, -1).to(self.device)
+            return self._apply_feature_mask(self._live_audio_features.expand(n, -1).to(self.device))
         # Random uniform audio vector (matches training distribution)
         return torch.rand(n, 12, device=self.device)
 
@@ -749,11 +757,18 @@ class GridPool:
         if schedule in ("uniform", "cosine", "poly"):
             self.schedule = schedule
 
-    def update_cfg(self, cfg_scale: float | None = None, cfg_audio: str | None = None):
+    def update_cfg(self, cfg_scale: float | None = None, cfg_audio: str | None = None,
+                   cfg_feature_mask: list[float] | None = ...):
         if cfg_scale is not None:
             self.cfg_scale = max(0.0, cfg_scale)
         if cfg_audio is not None and cfg_audio in ("random", "live"):
             self.cfg_audio = cfg_audio
+        if cfg_feature_mask is not ...:
+            # None = all features (clear mask); list = selective mask
+            if cfg_feature_mask is None or not any(v < 1.0 for v in cfg_feature_mask):
+                self.cfg_feature_mask = None
+            else:
+                self.cfg_feature_mask = cfg_feature_mask
 
     def flush_and_refill(self):
         """Drain the queue — background thread will refill."""
